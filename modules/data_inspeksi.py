@@ -107,15 +107,9 @@ def show():
         unsafe_allow_html=True,
     )
 
-    # Inisialisasi input state dari data tersimpan
+    # Hanya inisialisasi session state untuk keterangan (tidak conflict dengan widget)
     for jdw in jadwal_list:
         jid = jdw["jadwal_id"]
-        if f"di_mode_{jid}" not in st.session_state:
-            st.session_state[f"di_mode_{jid}"] = "Pilih Minggu"
-        if f"di_bln_{jid}" not in st.session_state:
-            st.session_state[f"di_bln_{jid}"] = jdw["bulan_aktual"] or jdw["bulan"]
-        if f"di_mgg_{jid}" not in st.session_state:
-            st.session_state[f"di_mgg_{jid}"] = jdw["minggu_aktual"] or jdw["minggu"]
         if f"di_ket_{jid}" not in st.session_state:
             st.session_state[f"di_ket_{jid}"] = jdw["keterangan"] or ""
 
@@ -125,17 +119,9 @@ def show():
         minggu = jdw["minggu"]
         label_rencana = f"{BULAN_NAMA[bulan-1]} Minggu {minggu}"
 
-        bln_ak = st.session_state.get(f"di_bln_{jid}", bulan)
-        mgg_ak = st.session_state.get(f"di_mgg_{jid}", minggu)
-
-        if bln_ak and mgg_ak:
-            status_preview = hitung_status_otomatis(tahun_pilih, bulan, minggu, bln_ak, mgg_ak)
-        elif sudah_lewat(tahun_pilih, bulan, minggu):
-            status_preview = "❌ Tidak Terlaksana"
-        else:
-            status_preview = "⏳ Belum"
-
-        warna = status_color(status_preview)
+        # Default dari data tersimpan atau dari rencana
+        bln_default = (jdw["bulan_aktual"]  or bulan)  - 1
+        mgg_default = (jdw["minggu_aktual"] or minggu) - 1
 
         c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 1, 2, 2, 3])
 
@@ -145,22 +131,18 @@ def show():
                 f"font-size:12px;padding-top:8px;'>{label_rencana}</p>",
                 unsafe_allow_html=True,
             )
+
         with c2:
             mode = st.selectbox(
                 "mode", options=["Pilih Minggu", "Pilih Tanggal"],
                 key=f"di_mode_{jid}", label_visibility="collapsed",
             )
-        with c3:
-            st.markdown(
-                f"<p style='color:{warna};font-family:IBM Plex Mono,monospace;"
-                f"font-size:11px;padding-top:8px;font-weight:700;'>{status_preview}</p>",
-                unsafe_allow_html=True,
-            )
+
         with c4:
             if mode == "Pilih Tanggal":
-                hari_default = (minggu - 1) * 7 + 1
+                hari_default = bln_default * 7 + 1
                 try:
-                    default_date = datetime.date(tahun_pilih, bulan, hari_default)
+                    default_date = datetime.date(tahun_pilih, bulan, min(hari_default, 28))
                 except:
                     default_date = datetime.date(tahun_pilih, bulan, 1)
                 tgl = st.date_input(
@@ -169,29 +151,52 @@ def show():
                     max_value=datetime.date(tahun_pilih, 12, 31),
                     key=f"di_tgl_{jid}", label_visibility="collapsed",
                 )
-                st.session_state[f"di_bln_{jid}"] = tgl.month
-                st.session_state[f"di_mgg_{jid}"] = get_minggu_dari_tanggal(tgl)
+                bln_ak = tgl.month
+                mgg_ak = get_minggu_dari_tanggal(tgl)
             else:
-                st.selectbox(
+                bln_ak = st.selectbox(
                     "bln", options=list(range(1, 13)),
                     format_func=lambda x: BULAN_NAMA[x-1],
-                    index=bln_ak - 1,
+                    index=bln_default,
                     key=f"di_bln_{jid}", label_visibility="collapsed",
                 )
+
         with c5:
-            if mode != "Pilih Tanggal":
-                st.selectbox(
-                    "mgg", options=[1, 2, 3, 4],
-                    format_func=lambda x: f"Minggu {x}",
-                    index=mgg_ak - 1,
-                    key=f"di_mgg_{jid}", label_visibility="collapsed",
+            if mode == "Pilih Tanggal":
+                mgg_ak_display = get_minggu_dari_tanggal(
+                    datetime.date(tahun_pilih, bln_ak, 1)
                 )
-            else:
                 st.markdown(
                     f"<p style='color:#64748b;font-size:11px;font-family:IBM Plex Mono,monospace;"
-                    f"padding-top:8px;'>Minggu {st.session_state[f'di_mgg_{jid}']}</p>",
+                    f"padding-top:8px;'>Minggu {mgg_ak}</p>",
                     unsafe_allow_html=True,
                 )
+            else:
+                mgg_ak = st.selectbox(
+                    "mgg", options=[1, 2, 3, 4],
+                    format_func=lambda x: f"Minggu {x}",
+                    index=mgg_default,
+                    key=f"di_mgg_{jid}", label_visibility="collapsed",
+                )
+
+        # Hitung status preview
+        if mode == "Pilih Tanggal":
+            bln_cek = bln_ak
+            mgg_cek = mgg_ak
+        else:
+            bln_cek = st.session_state.get(f"di_bln_{jid}", bulan)
+            mgg_cek = st.session_state.get(f"di_mgg_{jid}", minggu)
+
+        status_preview = hitung_status_otomatis(tahun_pilih, bulan, minggu, bln_cek, mgg_cek)
+        warna = status_color(status_preview)
+
+        with c3:
+            st.markdown(
+                f"<p style='color:{warna};font-family:IBM Plex Mono,monospace;"
+                f"font-size:11px;padding-top:8px;font-weight:700;'>{status_preview}</p>",
+                unsafe_allow_html=True,
+            )
+
         with c6:
             ket_wajib   = status_preview in STATUS_WAJIB_KETERANGAN
             placeholder = "Wajib diisi..." if ket_wajib else "Opsional..."
@@ -207,41 +212,28 @@ def show():
 
     if st.button("💾 Simpan Realisasi", type="primary"):
         error_list = []
+        realisasi_list = []
+
         for jdw in jadwal_list:
             jid    = jdw["jadwal_id"]
-            bln_ak = st.session_state.get(f"di_bln_{jid}", jdw["bulan"])
-            mgg_ak = st.session_state.get(f"di_mgg_{jid}", jdw["minggu"])
+            mode   = st.session_state.get(f"di_mode_{jid}", "Pilih Minggu")
             ket    = st.session_state.get(f"di_ket_{jid}", "").strip()
-            if bln_ak and mgg_ak:
-                status = hitung_status_otomatis(tahun_pilih, jdw["bulan"], jdw["minggu"], bln_ak, mgg_ak)
-            elif sudah_lewat(tahun_pilih, jdw["bulan"], jdw["minggu"]):
-                status = "❌ Tidak Terlaksana"
+
+            if mode == "Pilih Tanggal":
+                tgl    = st.session_state.get(f"di_tgl_{jid}")
+                bln_ak = tgl.month if tgl else jdw["bulan"]
+                mgg_ak = get_minggu_dari_tanggal(tgl) if tgl else jdw["minggu"]
             else:
-                status = "⏳ Belum"
+                bln_ak = st.session_state.get(f"di_bln_{jid}", jdw["bulan"])
+                mgg_ak = st.session_state.get(f"di_mgg_{jid}", jdw["minggu"])
+
+            status = hitung_status_otomatis(tahun_pilih, jdw["bulan"], jdw["minggu"], bln_ak, mgg_ak)
+
             if status in STATUS_WAJIB_KETERANGAN and not ket:
                 error_list.append(
                     f"{BULAN_NAMA[jdw['bulan']-1]} Minggu {jdw['minggu']} ({status})"
                 )
-
-        if error_list:
-            st.error("⚠️ Keterangan wajib diisi untuk:\n" + "\n".join(f"• {e}" for e in error_list))
-        else:
-            realisasi_list = []
-            for jdw in jadwal_list:
-                jid    = jdw["jadwal_id"]
-                bln_ak = st.session_state.get(f"di_bln_{jid}", jdw["bulan"])
-                mgg_ak = st.session_state.get(f"di_mgg_{jid}", jdw["minggu"])
-                ket    = st.session_state.get(f"di_ket_{jid}", "").strip()
-                if bln_ak and mgg_ak:
-                    status = hitung_status_otomatis(tahun_pilih, jdw["bulan"], jdw["minggu"], bln_ak, mgg_ak)
-                elif sudah_lewat(tahun_pilih, jdw["bulan"], jdw["minggu"]):
-                    status = "❌ Tidak Terlaksana"
-                    bln_ak = None
-                    mgg_ak = None
-                else:
-                    status = "⏳ Belum"
-                    bln_ak = None
-                    mgg_ak = None
+            else:
                 realisasi_list.append({
                     "jadwal_id"    : jid,
                     "mesin"        : mesin_pilih,
@@ -251,6 +243,10 @@ def show():
                     "status"       : status,
                     "keterangan"   : ket,
                 })
+
+        if error_list:
+            st.error("⚠️ Keterangan wajib diisi untuk:\n" + "\n".join(f"• {e}" for e in error_list))
+        else:
             database.simpan_realisasi_batch(realisasi_list)
             st.success("✅ Realisasi berhasil disimpan!")
             st.rerun()
@@ -294,9 +290,10 @@ def show():
     st.markdown(f"""
     <div style="margin-bottom:20px;">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#94a3b8;font-size:11px;font-family:IBM Plex Mono,monospace;">TINGKAT REALISASI</span>
-            <span style="color:#f8fafc;font-size:11px;font-family:IBM Plex Mono,monospace;font-weight:700;">
-                {terlaksana}/{total} ({pct_terlaksana:.1f}%)</span>
+            <span style="color:#94a3b8;font-size:11px;font-family:IBM Plex Mono,monospace;">
+                TINGKAT REALISASI</span>
+            <span style="color:#f8fafc;font-size:11px;font-family:IBM Plex Mono,monospace;
+                         font-weight:700;">{terlaksana}/{total} ({pct_terlaksana:.1f}%)</span>
         </div>
         <div style="background:#1e2a45;border-radius:4px;height:8px;">
             <div style="background:linear-gradient(90deg,#22c55e,#38bdf8);border-radius:4px;
@@ -307,7 +304,7 @@ def show():
 
     st.markdown("<hr style='border-color:#1e2a45;margin:8px 0 20px 0'>", unsafe_allow_html=True)
 
-    # ── Tabel Detail ──────────────────────────────────────────────────────────
+    # ── Step 5: Tabel Detail ──────────────────────────────────────────────────
     step_badge(5, "Tabel Detail Rencana vs Realisasi")
 
     status_filter = st.selectbox(
@@ -346,7 +343,8 @@ def show():
 
     st.html(f"""
     <div style="overflow-x:auto;margin-top:12px;">
-      <table style="border-collapse:collapse;background:#0a0e1a;width:100%;font-family:IBM Plex Mono,monospace;">
+      <table style="border-collapse:collapse;background:#0a0e1a;width:100%;
+                    font-family:IBM Plex Mono,monospace;">
         <thead>
           <tr>
             <th style="{header_css};text-align:left;border-right:1px solid #1e2a45;">Rencana</th>
@@ -396,18 +394,22 @@ def show():
             ws["A2"].alignment = Alignment(horizontal="center")
             ws.append([])
 
-            # Header
-            for col_idx, hdr in enumerate(["No","Rencana","Realisasi","Status","Keterangan","Diupdate"], 1):
-                cell = ws.cell(row=ws.max_row+1, column=col_idx, value=hdr)
+            # Header tabel
+            hdr_row = ws.max_row + 1
+            for ci, hdr in enumerate(["No","Rencana","Realisasi","Status","Keterangan","Diupdate"], 1):
+                cell = ws.cell(row=hdr_row, column=ci, value=hdr)
                 cell.font      = Font(name="Consolas", bold=True, size=10, color="f59e0b")
                 cell.fill      = PatternFill("solid", fgColor="1e2a45")
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 cell.border    = border
-            ws.row_dimensions[ws.max_row].height = 20
+            ws.row_dimensions[hdr_row].height = 20
 
             status_colors_map = {
-                "✅ Tepat": "22c55e", "⚠️ Terlambat": "f59e0b",
-                "⚡ Lebih Cepat": "38bdf8", "❌ Tidak Terlaksana": "ef4444", "⏳ Belum": "64748b"
+                "✅ Tepat"            : "22c55e",
+                "⚠️ Terlambat"        : "f59e0b",
+                "⚡ Lebih Cepat"      : "38bdf8",
+                "❌ Tidak Terlaksana" : "ef4444",
+                "⏳ Belum"            : "64748b",
             }
 
             for no, j in enumerate(jadwal_list, 1):
@@ -425,30 +427,32 @@ def show():
                     cell = ws.cell(row=dr, column=ci)
                     cell.fill      = PatternFill("solid", fgColor="0f1628")
                     cell.alignment = Alignment(
-                        horizontal="left" if ci in [2,3,5] else "center",
-                        vertical="center"
+                        horizontal="left" if ci in [2, 3, 5] else "center",
+                        vertical="center",
                     )
                     cell.border = border
                     cell.font   = Font(
                         name="Consolas", size=10,
                         color=s_color if ci == 4 else ("94a3b8" if ci == 5 else "f8fafc"),
-                        bold=(ci == 4)
+                        bold=(ci == 4),
                     )
 
             # Ringkasan
             ws.append([])
             for label, nilai, warna in [
-                ("Total Jadwal", total, "f8fafc"),
-                ("Tepat", n_tepat, "22c55e"),
-                ("Terlambat", n_terlambat, "f59e0b"),
-                ("Lebih Cepat", n_cepat, "38bdf8"),
-                ("Tidak Terlaksana", n_tidak, "ef4444"),
-                ("Belum", n_belum, "64748b"),
+                ("Total Jadwal",      total,              "f8fafc"),
+                ("Tepat",             n_tepat,            "22c55e"),
+                ("Terlambat",         n_terlambat,        "f59e0b"),
+                ("Lebih Cepat",       n_cepat,            "38bdf8"),
+                ("Tidak Terlaksana",  n_tidak,            "ef4444"),
+                ("Belum",             n_belum,            "64748b"),
                 ("Tingkat Realisasi", f"{pct_terlaksana:.1f}%", "22c55e"),
             ]:
                 r = ws.max_row + 1
-                ws.cell(row=r, column=1, value=label).font = Font(name="Consolas", size=10, color="94a3b8")
-                ws.cell(row=r, column=2, value=str(nilai)).font = Font(name="Consolas", bold=True, size=10, color=warna)
+                ws.cell(row=r, column=1, value=label).font = \
+                    Font(name="Consolas", size=10, color="94a3b8")
+                ws.cell(row=r, column=2, value=str(nilai)).font = \
+                    Font(name="Consolas", bold=True, size=10, color=warna)
 
             for i, w in enumerate([6, 22, 22, 22, 40, 20], 1):
                 ws.column_dimensions[get_column_letter(i)].width = w
