@@ -68,7 +68,7 @@ def show():
                       font-weight:700;margin-bottom:8px;">⚠️ Data Rencana Belum Tersedia</p>
             <p style="color:#94a3b8;font-size:13px;font-family:IBM Plex Sans,sans-serif;margin:0;">
                 Silakan lakukan perhitungan terlebih dahulu di menu
-                <strong style="color:#f8fafc;">🗓️ Interval Inspeksi</strong>
+                <strong style="color:#f8fafc;">🗓️ Rencana Inspeksi</strong>
                 untuk menghasilkan jadwal rencana inspeksi.
             </p>
         </div>
