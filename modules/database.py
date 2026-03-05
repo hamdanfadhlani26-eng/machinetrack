@@ -45,11 +45,41 @@ def init_db():
                 tanggal     TEXT PRIMARY KEY,
                 keterangan  TEXT
             );
+            CREATE TABLE IF NOT EXISTS rencana_inspeksi (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                mesin         TEXT    NOT NULL,
+                tahun         INTEGER NOT NULL,
+                n             INTEGER NOT NULL,
+                jam_kerja     REAL    NOT NULL,
+                waktu_ins     REAL    NOT NULL,
+                periode       INTEGER NOT NULL,
+                created_at    TEXT    NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS jadwal_inspeksi (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                rencana_id    INTEGER NOT NULL,
+                mesin         TEXT    NOT NULL,
+                tahun         INTEGER NOT NULL,
+                bulan         INTEGER NOT NULL,
+                minggu        INTEGER NOT NULL,
+                FOREIGN KEY (rencana_id) REFERENCES rencana_inspeksi(id)
+            );
+            CREATE TABLE IF NOT EXISTS realisasi_inspeksi (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                jadwal_id     INTEGER NOT NULL UNIQUE,
+                mesin         TEXT    NOT NULL,
+                tahun         INTEGER NOT NULL,
+                bulan_aktual  INTEGER,
+                minggu_aktual INTEGER,
+                status        TEXT,
+                keterangan    TEXT,
+                updated_at    TEXT,
+                FOREIGN KEY (jadwal_id) REFERENCES jadwal_inspeksi(id)
+            );
         """)
 
 # ── Hari Libur Nasional ───────────────────────────────────────
 def fetch_holidays(year: int):
-    """Ambil hari libur dari API dan simpan ke cache."""
     try:
         url  = f"https://api-harilibur.vercel.app/api?year={year}"
         resp = requests.get(url, timeout=5)
@@ -65,7 +95,6 @@ def fetch_holidays(year: int):
         return False
 
 def get_holidays(year: int):
-    """Ambil hari libur dari cache, fetch dari API jika belum ada."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT tanggal FROM holiday_cache WHERE tanggal LIKE ?",
@@ -81,18 +110,14 @@ def get_holidays(year: int):
     return set(r["tanggal"] for r in rows)
 
 def is_work_day(d: date, holidays: set) -> bool:
-    """Cek apakah hari ini hari kerja (Senin-Jumat, bukan libur)."""
     return d.weekday() < 5 and str(d) not in holidays
 
 def work_hours_in_day(start_hour: float, end_hour: float) -> float:
-    """Hitung jam kerja efektif dalam satu hari."""
-    # Clip ke jam kerja
     s = max(start_hour, WORK_START)
     e = min(end_hour,   WORK_END)
     if s >= e:
         return 0.0
     total = e - s
-    # Kurangi waktu istirahat
     overlap_start = max(s, BREAK_START)
     overlap_end   = min(e, BREAK_END)
     if overlap_end > overlap_start:
@@ -100,43 +125,33 @@ def work_hours_in_day(start_hour: float, end_hour: float) -> float:
     return max(total, 0.0)
 
 def calc_repair_hours(start_date, start_time, end_date, end_time):
-    """Hitung TTR berdasarkan jam kerja efektif saja."""
     try:
         s = datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M")
         e = datetime.strptime(f"{end_date} {end_time}",     "%Y-%m-%d %H:%M")
         if e <= s:
             return None
-
-        # Kumpulkan semua tahun yang terlibat
         years    = set(range(s.year, e.year + 1))
         holidays = set()
         for yr in years:
             holidays |= get_holidays(yr)
-
         total_hours = 0.0
         current     = s.date()
         end_d       = e.date()
-
         while current <= end_d:
             if is_work_day(current, holidays):
                 if current == s.date() == end_d:
-                    # Mulai dan selesai di hari yang sama
                     sh = s.hour + s.minute / 60
                     eh = e.hour + e.minute / 60
                     total_hours += work_hours_in_day(sh, eh)
                 elif current == s.date():
-                    # Hari pertama
                     sh = s.hour + s.minute / 60
                     total_hours += work_hours_in_day(sh, WORK_END)
                 elif current == end_d:
-                    # Hari terakhir
                     eh = e.hour + e.minute / 60
                     total_hours += work_hours_in_day(WORK_START, eh)
                 else:
-                    # Hari penuh di tengah
                     total_hours += WORK_PER_DAY
             current += timedelta(days=1)
-
         return round(total_hours, 2) if total_hours > 0 else None
     except Exception:
         return None
@@ -251,3 +266,122 @@ def get_ttr_by_machine(mesin: str):
             (mesin,)
         ).fetchall()
         return [r["total_repair_hours"] for r in rows]
+
+# ── Rencana Inspeksi CRUD ─────────────────────────────────────
+
+def simpan_rencana_inspeksi(mesin: str, tahun: int, n: int,
+                             jam_kerja: float, waktu_ins: float,
+                             periode: int, jadwal_slots: list) -> int:
+    """
+    Simpan rencana inspeksi baru (versi baru) beserta jadwal slotnya.
+    jadwal_slots: list of (bulan, minggu)
+    Return: rencana_id yang baru dibuat
+    """
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        cur = conn.execute("""
+            INSERT INTO rencana_inspeksi
+            (mesin, tahun, n, jam_kerja, waktu_ins, periode, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (mesin, tahun, n, jam_kerja, waktu_ins, periode, created_at))
+        rencana_id = cur.lastrowid
+        for (bulan, minggu) in jadwal_slots:
+            conn.execute("""
+                INSERT INTO jadwal_inspeksi
+                (rencana_id, mesin, tahun, bulan, minggu)
+                VALUES (?, ?, ?, ?, ?)
+            """, (rencana_id, mesin, tahun, bulan, minggu))
+    return rencana_id
+
+
+def get_versi_rencana(mesin: str, tahun: int) -> list:
+    """
+    Ambil semua versi rencana untuk mesin & tahun tertentu.
+    Return: list of dict {id, created_at, n}
+    """
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT id, n, created_at
+            FROM rencana_inspeksi
+            WHERE mesin=? AND tahun=?
+            ORDER BY created_at DESC
+        """, (mesin, tahun)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_jadwal_by_rencana(rencana_id: int) -> list:
+    """
+    Ambil semua slot jadwal untuk rencana_id tertentu,
+    beserta data realisasi jika sudah ada.
+    """
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT
+                j.id         AS jadwal_id,
+                j.mesin,
+                j.tahun,
+                j.bulan,
+                j.minggu,
+                r.id         AS realisasi_id,
+                r.bulan_aktual,
+                r.minggu_aktual,
+                r.status,
+                r.keterangan,
+                r.updated_at
+            FROM jadwal_inspeksi j
+            LEFT JOIN realisasi_inspeksi r ON r.jadwal_id = j.id
+            WHERE j.rencana_id = ?
+            ORDER BY j.bulan, j.minggu
+        """, (rencana_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_tahun_tersedia() -> list:
+    """Ambil semua tahun yang sudah ada rencana inspeksinya."""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT DISTINCT tahun FROM rencana_inspeksi ORDER BY tahun DESC
+        """).fetchall()
+    return [r["tahun"] for r in rows]
+
+
+def get_mesin_by_tahun(tahun: int) -> list:
+    """Ambil daftar mesin yang punya rencana inspeksi di tahun tertentu."""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT DISTINCT mesin FROM rencana_inspeksi
+            WHERE tahun=? ORDER BY mesin
+        """, (tahun,)).fetchall()
+    return [r["mesin"] for r in rows]
+
+
+def simpan_realisasi_batch(realisasi_list: list):
+    """
+    Simpan/update realisasi inspeksi secara batch.
+    realisasi_list: list of dict {
+        jadwal_id, mesin, tahun,
+        bulan_aktual, minggu_aktual,
+        status, keterangan
+    }
+    """
+    updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        for r in realisasi_list:
+            conn.execute("""
+                INSERT INTO realisasi_inspeksi
+                (jadwal_id, mesin, tahun, bulan_aktual, minggu_aktual,
+                 status, keterangan, updated_at)
+                VALUES (:jadwal_id, :mesin, :tahun, :bulan_aktual, :minggu_aktual,
+                        :status, :keterangan, :updated_at)
+                ON CONFLICT(jadwal_id) DO UPDATE SET
+                    bulan_aktual  = excluded.bulan_aktual,
+                    minggu_aktual = excluded.minggu_aktual,
+                    status        = excluded.status,
+                    keterangan    = excluded.keterangan,
+                    updated_at    = excluded.updated_at
+            """, {**r, "updated_at": updated_at})
+
+
+def get_rekap_tahunan(mesin: str, tahun: int, rencana_id: int) -> list:
+    """Ambil rekap lengkap rencana vs realisasi untuk export Excel."""
+    return get_jadwal_by_rencana(rencana_id)

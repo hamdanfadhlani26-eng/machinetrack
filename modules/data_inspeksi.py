@@ -1,278 +1,274 @@
 import streamlit as st
 import datetime
+import io
 from modules.theme import page_header, step_badge
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
+from modules import database
 
 BULAN_NAMA = ["Januari","Februari","Maret","April","Mei","Juni",
                "Juli","Agustus","September","Oktober","November","Desember"]
 
-MINGGU_MAP = {
-    1: [1],
-    2: [1, 3],
-    3: [1, 2, 3],
-    4: [1, 2, 3, 4],
-}
-
-def get_minggu_dari_tanggal(tanggal: datetime.date) -> int:
-    """Konversi tanggal ke minggu dalam bulan (1-4)."""
-    d = tanggal.day
-    if d <= 7:   return 1
-    if d <= 14:  return 2
-    if d <= 21:  return 3
-    return 4
-
-def get_minggu_sekarang() -> tuple:
-    """Return (bulan, minggu) saat ini."""
-    today = datetime.date.today()
-    return today.month, get_minggu_dari_tanggal(today)
-
-def sudah_lewat(bulan_rencana: int, minggu_rencana: int) -> bool:
-    """Cek apakah minggu rencana sudah lewat dari sekarang."""
-    bln_skrg, mgg_skrg = get_minggu_sekarang()
-    if bulan_rencana < bln_skrg:
-        return True
-    if bulan_rencana == bln_skrg and minggu_rencana < mgg_skrg:
-        return True
-    return False
-
-def hitung_status(bulan_rencana, minggu_rencana, bulan_aktual, minggu_aktual):
-    """Hitung status inspeksi berdasarkan rencana vs aktual."""
-    if bulan_rencana == bulan_aktual and minggu_rencana == minggu_aktual:
-        return "✅ Tepat"
-    # Konversi ke angka minggu global untuk perbandingan
-    rencana_global = (bulan_rencana - 1) * 4 + minggu_rencana
-    aktual_global  = (bulan_aktual  - 1) * 4 + minggu_aktual
-    if aktual_global > rencana_global:
-        return "⚠️ Terlambat"
-    return "⚡ Lebih Cepat"
+STATUS_OPTIONS = ["⏳ Belum", "✅ Tepat", "⚠️ Terlambat", "⚡ Lebih Cepat", "❌ Tidak Terlaksana"]
+STATUS_WAJIB_KETERANGAN = ["⚠️ Terlambat", "⚡ Lebih Cepat", "❌ Tidak Terlaksana"]
 
 def status_color(status: str) -> str:
     if "Tepat"       in status: return "#22c55e"
     if "Terlambat"   in status: return "#f59e0b"
     if "Lebih Cepat" in status: return "#38bdf8"
     if "Tidak"       in status: return "#ef4444"
-    return "#64748b"  # Belum
+    return "#475569"
 
-# ── Main show() ───────────────────────────────────────────────────────────────
+def get_minggu_dari_tanggal(tanggal: datetime.date) -> int:
+    d = tanggal.day
+    if d <= 7:  return 1
+    if d <= 14: return 2
+    if d <= 21: return 3
+    return 4
+
+def sudah_lewat(tahun: int, bulan: int, minggu: int) -> bool:
+    today  = datetime.date.today()
+    thn_sk = today.year
+    bln_sk = today.month
+    mgg_sk = get_minggu_dari_tanggal(today)
+    if tahun < thn_sk: return True
+    if tahun > thn_sk: return False
+    if bulan < bln_sk: return True
+    if bulan == bln_sk and minggu < mgg_sk: return True
+    return False
+
+def hitung_status_otomatis(tahun, bulan_r, minggu_r, bulan_a, minggu_a):
+    if bulan_r == bulan_a and minggu_r == minggu_a:
+        return "✅ Tepat"
+    rencana_global = (bulan_r - 1) * 4 + minggu_r
+    aktual_global  = (bulan_a - 1) * 4 + minggu_a
+    if aktual_global > rencana_global:
+        return "⚠️ Terlambat"
+    return "⚡ Lebih Cepat"
+
 
 def show():
     page_header("📝", "Data Inspeksi", "Evaluasi realisasi vs rencana inspeksi")
 
-    # ── Guard: cek apakah Modul 5 sudah dijalankan ───────────────────────────
-    if "ins_hasil" not in st.session_state or not st.session_state["ins_hasil"]:
-        st.markdown("""
+    # ── Cek apakah ada data di database ──────────────────────────────────────
+    tahun_list = database.get_tahun_tersedia()
+
+    if not tahun_list:
+        st.html("""
         <div style="background:#1e2a45;border:1px solid #f59e0b;border-radius:10px;
                     padding:24px;text-align:center;margin-top:32px;">
             <p style="color:#f59e0b;font-size:18px;font-family:IBM Plex Mono,monospace;
-                      font-weight:700;margin-bottom:8px;">⚠️ Data Rencana Belum Tersedia</p>
+                      font-weight:700;margin-bottom:8px;">⚠️ Belum Ada Rencana Inspeksi</p>
             <p style="color:#94a3b8;font-size:13px;font-family:IBM Plex Sans,sans-serif;margin:0;">
-                Silakan lakukan perhitungan terlebih dahulu di menu
-                <strong style="color:#f8fafc;">🗓️ Rencana Inspeksi</strong>
-                untuk menghasilkan jadwal rencana inspeksi.
+                Silakan buat dan simpan rencana inspeksi terlebih dahulu di menu
+                <strong style="color:#f8fafc;">🗓️ Rencana Inspeksi</strong>.
             </p>
         </div>
-        """, unsafe_allow_html=True)
+        """)
         return
 
-    hasil    = st.session_state["ins_hasil"]
-    tahun    = datetime.date.today().year
-    bln_skrg, mgg_skrg = get_minggu_sekarang()
+    # ── Step 1: Filter Tahun, Mesin, Versi ───────────────────────────────────
+    step_badge(1, "Pilih Rencana Inspeksi")
 
-    # ── Bangun semua slot rencana ─────────────────────────────────────────────
-    # Format key session state: "real_{nama}_{bulan}_{minggu}"
-    semua_slot = []
-    for h in hasil:
-        nama = h["nama"]
-        n    = min(h["n"], 4)
-        minggu_ins = MINGGU_MAP.get(n, [1])
-        for bln in range(1, 13):
-            for mg in minggu_ins:
-                semua_slot.append({
-                    "nama"           : nama,
-                    "bulan_rencana"  : bln,
-                    "minggu_rencana" : mg,
-                })
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        tahun_pilih = st.selectbox("Tahun", options=tahun_list, key="di_tahun")
+    mesin_list = database.get_mesin_by_tahun(tahun_pilih)
+    with col2:
+        mesin_pilih = st.selectbox("Mesin", options=mesin_list, key="di_mesin")
+    versi_list = database.get_versi_rencana(mesin_pilih, tahun_pilih)
+    versi_options = [
+        f"Versi {len(versi_list)-i} — disimpan {v['created_at']} (n={v['n']}x/bulan)"
+        for i, v in enumerate(versi_list)
+    ]
+    with col3:
+        versi_idx = st.selectbox(
+            "Versi Rencana",
+            options=list(range(len(versi_options))),
+            format_func=lambda x: versi_options[x],
+            key="di_versi",
+        )
 
-    # ── Step 1: Input Realisasi ───────────────────────────────────────────────
-    step_badge(1, "Input Realisasi Inspeksi")
+    rencana_id  = versi_list[versi_idx]["id"]
+    jadwal_list = database.get_jadwal_by_rencana(rencana_id)
+
+    if not jadwal_list:
+        st.info("Tidak ada jadwal untuk rencana ini.")
+        return
+
+    st.markdown("<hr style='border-color:#1e2a45;margin:16px 0'>", unsafe_allow_html=True)
+
+    # ── Step 2: Input Realisasi ───────────────────────────────────────────────
+    step_badge(2, "Input Realisasi Inspeksi")
 
     st.markdown(
         "<p style='color:#94a3b8;font-size:12px;font-family:IBM Plex Mono,monospace;"
-        "margin-bottom:16px;'>Isi tanggal atau pilih minggu realisasi untuk setiap jadwal "
-        "inspeksi. Jadwal yang sudah lewat tanpa realisasi akan otomatis ditandai "
-        "<span style=\"color:#ef4444;\">Tidak Terlaksana</span>.</p>",
+        "margin-bottom:16px;'>Isi realisasi untuk setiap jadwal inspeksi. "
+        "Keterangan <span style=\"color:#ef4444;\">wajib diisi</span> "
+        "jika status Terlambat, Lebih Cepat, atau Tidak Terlaksana.</p>",
         unsafe_allow_html=True,
     )
 
-    # Filter: tampilkan per mesin dengan expander
-    for h in hasil:
-        nama      = h["nama"]
-        n         = min(h["n"], 4)
-        minggu_ins = MINGGU_MAP.get(n, [1])
-        slot_mesin = [s for s in semua_slot if s["nama"] == nama]
+    # Inisialisasi input state dari data tersimpan
+    for jdw in jadwal_list:
+        jid = jdw["jadwal_id"]
+        if f"di_mode_{jid}" not in st.session_state:
+            st.session_state[f"di_mode_{jid}"] = "Pilih Minggu"
+        if f"di_bln_{jid}" not in st.session_state:
+            st.session_state[f"di_bln_{jid}"] = jdw["bulan_aktual"] or jdw["bulan"]
+        if f"di_mgg_{jid}" not in st.session_state:
+            st.session_state[f"di_mgg_{jid}"] = jdw["minggu_aktual"] or jdw["minggu"]
+        if f"di_ket_{jid}" not in st.session_state:
+            st.session_state[f"di_ket_{jid}"] = jdw["keterangan"] or ""
 
-        with st.expander(f"🔧 {nama}  —  {n}x inspeksi/bulan  ({len(slot_mesin)} jadwal/tahun)", expanded=True):
-            for slot in slot_mesin:
-                bln = slot["bulan_rencana"]
-                mg  = slot["minggu_rencana"]
-                key_mode   = f"mode_{nama}_{bln}_{mg}"
-                key_date   = f"date_{nama}_{bln}_{mg}"
-                key_bln_ak = f"bln_{nama}_{bln}_{mg}"
-                key_mgg_ak = f"mgg_{nama}_{bln}_{mg}"
+    for jdw in jadwal_list:
+        jid    = jdw["jadwal_id"]
+        bulan  = jdw["bulan"]
+        minggu = jdw["minggu"]
+        label_rencana = f"{BULAN_NAMA[bulan-1]} Minggu {minggu}"
 
-                sudah_lewat_flag = sudah_lewat(bln, mg)
+        bln_ak = st.session_state.get(f"di_bln_{jid}", bulan)
+        mgg_ak = st.session_state.get(f"di_mgg_{jid}", minggu)
 
-                # Label rencana
-                label_rencana = f"{BULAN_NAMA[bln-1]} Minggu {mg}"
+        if bln_ak and mgg_ak:
+            status_preview = hitung_status_otomatis(tahun_pilih, bulan, minggu, bln_ak, mgg_ak)
+        elif sudah_lewat(tahun_pilih, bulan, minggu):
+            status_preview = "❌ Tidak Terlaksana"
+        else:
+            status_preview = "⏳ Belum"
 
-                col_rencana, col_mode, col_input, col_status_preview = st.columns([2, 2, 3, 2])
+        warna = status_color(status_preview)
 
-                with col_rencana:
-                    st.markdown(
-                        f"<p style='color:#f59e0b;font-family:IBM Plex Mono,monospace;"
-                        f"font-size:12px;padding-top:8px;'>📅 {label_rencana}</p>",
-                        unsafe_allow_html=True,
-                    )
+        c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 1, 2, 2, 3])
 
-                with col_mode:
-                    mode = st.selectbox(
-                        "Input",
-                        options=["Pilih Minggu", "Pilih Tanggal"],
-                        key=key_mode,
-                        label_visibility="collapsed",
-                    )
-
-                with col_input:
-                    if mode == "Pilih Tanggal":
-                        # Default tanggal = hari pertama minggu rencana
-                        hari_default = (mg - 1) * 7 + 1
-                        try:
-                            default_date = datetime.date(tahun, bln, hari_default)
-                        except:
-                            default_date = datetime.date(tahun, bln, 1)
-
-                        tgl = st.date_input(
-                            "Tanggal realisasi",
-                            value=st.session_state.get(key_date, None),
-                            min_value=datetime.date(tahun, 1, 1),
-                            max_value=datetime.date(tahun, 12, 31),
-                            key=key_date,
-                            label_visibility="collapsed",
-                        )
-                        if tgl:
-                            bln_aktual = tgl.month
-                            mgg_aktual = get_minggu_dari_tanggal(tgl)
-                            st.session_state[key_bln_ak] = bln_aktual
-                            st.session_state[key_mgg_ak] = mgg_aktual
-                        else:
-                            st.session_state.pop(key_bln_ak, None)
-                            st.session_state.pop(key_mgg_ak, None)
-                    else:
-                        # Dropdown bulan & minggu
-                        col_b, col_m = st.columns(2)
-                        with col_b:
-                            bln_aktual = st.selectbox(
-                                "Bulan",
-                                options=list(range(1, 13)),
-                                format_func=lambda x: BULAN_NAMA[x-1],
-                                index=bln - 1,
-                                key=key_bln_ak,
-                                label_visibility="collapsed",
-                            )
-                        with col_m:
-                            mgg_aktual = st.selectbox(
-                                "Minggu",
-                                options=[1, 2, 3, 4],
-                                format_func=lambda x: f"Minggu {x}",
-                                index=mg - 1,
-                                key=key_mgg_ak,
-                                label_visibility="collapsed",
-                            )
-
-                with col_status_preview:
-                    bln_ak = st.session_state.get(key_bln_ak)
-                    mgg_ak = st.session_state.get(key_mgg_ak)
-                    if bln_ak and mgg_ak:
-                        status = hitung_status(bln, mg, bln_ak, mgg_ak)
-                        warna  = status_color(status)
-                        st.markdown(
-                            f"<p style='color:{warna};font-family:IBM Plex Mono,monospace;"
-                            f"font-size:12px;padding-top:8px;font-weight:700;'>{status}</p>",
-                            unsafe_allow_html=True,
-                        )
-                    elif sudah_lewat_flag:
-                        st.markdown(
-                            "<p style='color:#ef4444;font-family:IBM Plex Mono,monospace;"
-                            "font-size:12px;padding-top:8px;font-weight:700;'>❌ Tidak Terlaksana</p>",
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        st.markdown(
-                            "<p style='color:#475569;font-family:IBM Plex Mono,monospace;"
-                            "font-size:12px;padding-top:8px;'>⏳ Belum</p>",
-                            unsafe_allow_html=True,
-                        )
+        with c1:
+            st.markdown(
+                f"<p style='color:#f59e0b;font-family:IBM Plex Mono,monospace;"
+                f"font-size:12px;padding-top:8px;'>{label_rencana}</p>",
+                unsafe_allow_html=True,
+            )
+        with c2:
+            mode = st.selectbox(
+                "mode", options=["Pilih Minggu", "Pilih Tanggal"],
+                key=f"di_mode_{jid}", label_visibility="collapsed",
+            )
+        with c3:
+            st.markdown(
+                f"<p style='color:{warna};font-family:IBM Plex Mono,monospace;"
+                f"font-size:11px;padding-top:8px;font-weight:700;'>{status_preview}</p>",
+                unsafe_allow_html=True,
+            )
+        with c4:
+            if mode == "Pilih Tanggal":
+                hari_default = (minggu - 1) * 7 + 1
+                try:
+                    default_date = datetime.date(tahun_pilih, bulan, hari_default)
+                except:
+                    default_date = datetime.date(tahun_pilih, bulan, 1)
+                tgl = st.date_input(
+                    "tgl", value=default_date,
+                    min_value=datetime.date(tahun_pilih, 1, 1),
+                    max_value=datetime.date(tahun_pilih, 12, 31),
+                    key=f"di_tgl_{jid}", label_visibility="collapsed",
+                )
+                st.session_state[f"di_bln_{jid}"] = tgl.month
+                st.session_state[f"di_mgg_{jid}"] = get_minggu_dari_tanggal(tgl)
+            else:
+                st.selectbox(
+                    "bln", options=list(range(1, 13)),
+                    format_func=lambda x: BULAN_NAMA[x-1],
+                    index=bln_ak - 1,
+                    key=f"di_bln_{jid}", label_visibility="collapsed",
+                )
+        with c5:
+            if mode != "Pilih Tanggal":
+                st.selectbox(
+                    "mgg", options=[1, 2, 3, 4],
+                    format_func=lambda x: f"Minggu {x}",
+                    index=mgg_ak - 1,
+                    key=f"di_mgg_{jid}", label_visibility="collapsed",
+                )
+            else:
+                st.markdown(
+                    f"<p style='color:#64748b;font-size:11px;font-family:IBM Plex Mono,monospace;"
+                    f"padding-top:8px;'>Minggu {st.session_state[f'di_mgg_{jid}']}</p>",
+                    unsafe_allow_html=True,
+                )
+        with c6:
+            ket_wajib   = status_preview in STATUS_WAJIB_KETERANGAN
+            placeholder = "Wajib diisi..." if ket_wajib else "Opsional..."
+            st.text_input(
+                "ket", placeholder=placeholder,
+                key=f"di_ket_{jid}", label_visibility="collapsed",
+            )
 
     st.markdown("<hr style='border-color:#1e2a45;margin:24px 0'>", unsafe_allow_html=True)
 
-    # ── Step 2: Tombol Evaluasi ───────────────────────────────────────────────
-    step_badge(2, "Evaluasi Realisasi")
+    # ── Step 3: Simpan Realisasi ──────────────────────────────────────────────
+    step_badge(3, "Simpan Realisasi")
 
-    if st.button("📊 Jalankan Evaluasi", type="primary"):
-        evaluasi = []
-        for slot in semua_slot:
-            nama = slot["nama"]
-            bln  = slot["bulan_rencana"]
-            mg   = slot["minggu_rencana"]
-            key_bln_ak = f"bln_{nama}_{bln}_{mg}"
-            key_mgg_ak = f"mgg_{nama}_{bln}_{mg}"
-
-            bln_ak = st.session_state.get(key_bln_ak)
-            mgg_ak = st.session_state.get(key_mgg_ak)
-
+    if st.button("💾 Simpan Realisasi", type="primary"):
+        error_list = []
+        for jdw in jadwal_list:
+            jid    = jdw["jadwal_id"]
+            bln_ak = st.session_state.get(f"di_bln_{jid}", jdw["bulan"])
+            mgg_ak = st.session_state.get(f"di_mgg_{jid}", jdw["minggu"])
+            ket    = st.session_state.get(f"di_ket_{jid}", "").strip()
             if bln_ak and mgg_ak:
-                status = hitung_status(bln, mg, bln_ak, mgg_ak)
-                realisasi_label = f"{BULAN_NAMA[bln_ak-1]} Minggu {mgg_ak}"
-            elif sudah_lewat(bln, mg):
+                status = hitung_status_otomatis(tahun_pilih, jdw["bulan"], jdw["minggu"], bln_ak, mgg_ak)
+            elif sudah_lewat(tahun_pilih, jdw["bulan"], jdw["minggu"]):
                 status = "❌ Tidak Terlaksana"
-                realisasi_label = "-"
             else:
                 status = "⏳ Belum"
-                realisasi_label = "-"
+            if status in STATUS_WAJIB_KETERANGAN and not ket:
+                error_list.append(
+                    f"{BULAN_NAMA[jdw['bulan']-1]} Minggu {jdw['minggu']} ({status})"
+                )
 
-            evaluasi.append({
-                "nama"            : nama,
-                "bulan_rencana"   : bln,
-                "minggu_rencana"  : mg,
-                "rencana_label"   : f"{BULAN_NAMA[bln-1]} Minggu {mg}",
-                "realisasi_label" : realisasi_label,
-                "status"          : status,
-            })
+        if error_list:
+            st.error("⚠️ Keterangan wajib diisi untuk:\n" + "\n".join(f"• {e}" for e in error_list))
+        else:
+            realisasi_list = []
+            for jdw in jadwal_list:
+                jid    = jdw["jadwal_id"]
+                bln_ak = st.session_state.get(f"di_bln_{jid}", jdw["bulan"])
+                mgg_ak = st.session_state.get(f"di_mgg_{jid}", jdw["minggu"])
+                ket    = st.session_state.get(f"di_ket_{jid}", "").strip()
+                if bln_ak and mgg_ak:
+                    status = hitung_status_otomatis(tahun_pilih, jdw["bulan"], jdw["minggu"], bln_ak, mgg_ak)
+                elif sudah_lewat(tahun_pilih, jdw["bulan"], jdw["minggu"]):
+                    status = "❌ Tidak Terlaksana"
+                    bln_ak = None
+                    mgg_ak = None
+                else:
+                    status = "⏳ Belum"
+                    bln_ak = None
+                    mgg_ak = None
+                realisasi_list.append({
+                    "jadwal_id"    : jid,
+                    "mesin"        : mesin_pilih,
+                    "tahun"        : tahun_pilih,
+                    "bulan_aktual" : bln_ak,
+                    "minggu_aktual": mgg_ak,
+                    "status"       : status,
+                    "keterangan"   : ket,
+                })
+            database.simpan_realisasi_batch(realisasi_list)
+            st.success("✅ Realisasi berhasil disimpan!")
+            st.rerun()
 
-        st.session_state["ins_evaluasi"] = evaluasi
+    st.markdown("<hr style='border-color:#1e2a45;margin:16px 0'>", unsafe_allow_html=True)
 
-    if "ins_evaluasi" not in st.session_state:
-        st.info("Tekan tombol **Jalankan Evaluasi** untuk melihat hasil.")
-        return
+    # ── Step 4: Rekap Evaluasi ────────────────────────────────────────────────
+    step_badge(4, "Rekap Evaluasi")
 
-    evaluasi = st.session_state["ins_evaluasi"]
-
-    # ── Ringkasan Statistik ───────────────────────────────────────────────────
-    total        = len(evaluasi)
-    n_tepat      = sum(1 for e in evaluasi if "Tepat"        in e["status"])
-    n_terlambat  = sum(1 for e in evaluasi if "Terlambat"    in e["status"])
-    n_cepat      = sum(1 for e in evaluasi if "Lebih Cepat"  in e["status"])
-    n_tidak      = sum(1 for e in evaluasi if "Tidak"        in e["status"])
-    n_belum      = sum(1 for e in evaluasi if "Belum"        in e["status"])
-    terlaksana   = n_tepat + n_terlambat + n_cepat
-
-    pct = lambda x: f"{x/total*100:.1f}%" if total > 0 else "0%"
-
-    st.markdown("""
-    <p style='color:#94a3b8;font-size:11px;font-family:IBM Plex Mono,monospace;
-    letter-spacing:1px;margin-bottom:12px;'>RINGKASAN EVALUASI</p>
-    """, unsafe_allow_html=True)
+    jadwal_list = database.get_jadwal_by_rencana(rencana_id)
+    total       = len(jadwal_list)
+    n_tepat     = sum(1 for j in jadwal_list if j["status"] and "Tepat"       in j["status"])
+    n_terlambat = sum(1 for j in jadwal_list if j["status"] and "Terlambat"   in j["status"])
+    n_cepat     = sum(1 for j in jadwal_list if j["status"] and "Lebih Cepat" in j["status"])
+    n_tidak     = sum(1 for j in jadwal_list if j["status"] and "Tidak"       in j["status"])
+    n_belum     = sum(1 for j in jadwal_list if not j["status"] or "Belum"    in j["status"])
+    terlaksana  = n_tepat + n_terlambat + n_cepat
+    pct         = lambda x: f"{x/total*100:.1f}%" if total > 0 else "0%"
 
     c1, c2, c3, c4, c5 = st.columns(5)
     def metric_box(col, label, nilai, warna, pct_val=""):
@@ -283,112 +279,189 @@ def show():
                       font-family:IBM Plex Mono,monospace;margin:0;">{nilai}</p>
             <p style="color:#64748b;font-size:10px;font-family:IBM Plex Mono,monospace;
                       margin:4px 0 0 0;letter-spacing:1px;">{label}</p>
-            <p style="color:{warna};font-size:11px;font-family:IBM Plex Mono,monospace;
-                      margin:2px 0 0 0;opacity:0.7;">{pct_val}</p>
+            <p style="color:{warna};font-size:11px;opacity:0.7;margin:2px 0 0 0;">{pct_val}</p>
         </div>
         """, unsafe_allow_html=True)
 
-    metric_box(c1, "TEPAT",         n_tepat,     "#22c55e", pct(n_tepat))
-    metric_box(c2, "TERLAMBAT",     n_terlambat, "#f59e0b", pct(n_terlambat))
-    metric_box(c3, "LEBIH CEPAT",   n_cepat,     "#38bdf8", pct(n_cepat))
-    metric_box(c4, "TIDAK TERLAKSANA", n_tidak,  "#ef4444", pct(n_tidak))
-    metric_box(c5, "BELUM",         n_belum,     "#64748b", pct(n_belum))
+    metric_box(c1, "TEPAT",            n_tepat,     "#22c55e", pct(n_tepat))
+    metric_box(c2, "TERLAMBAT",        n_terlambat, "#f59e0b", pct(n_terlambat))
+    metric_box(c3, "LEBIH CEPAT",      n_cepat,     "#38bdf8", pct(n_cepat))
+    metric_box(c4, "TIDAK TERLAKSANA", n_tidak,     "#ef4444", pct(n_tidak))
+    metric_box(c5, "BELUM",            n_belum,     "#64748b", pct(n_belum))
 
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # Progress bar realisasi
     pct_terlaksana = terlaksana / total * 100 if total > 0 else 0
     st.markdown(f"""
     <div style="margin-bottom:20px;">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#94a3b8;font-size:11px;font-family:IBM Plex Mono,monospace;">
-                TINGKAT REALISASI
-            </span>
-            <span style="color:#f8fafc;font-size:11px;font-family:IBM Plex Mono,monospace;
-                         font-weight:700;">
-                {terlaksana}/{total} ({pct_terlaksana:.1f}%)
-            </span>
+            <span style="color:#94a3b8;font-size:11px;font-family:IBM Plex Mono,monospace;">TINGKAT REALISASI</span>
+            <span style="color:#f8fafc;font-size:11px;font-family:IBM Plex Mono,monospace;font-weight:700;">
+                {terlaksana}/{total} ({pct_terlaksana:.1f}%)</span>
         </div>
         <div style="background:#1e2a45;border-radius:4px;height:8px;">
-            <div style="background:linear-gradient(90deg,#22c55e,#38bdf8);
-                        border-radius:4px;height:8px;width:{pct_terlaksana:.1f}%;
-                        transition:width 0.3s;"></div>
+            <div style="background:linear-gradient(90deg,#22c55e,#38bdf8);border-radius:4px;
+                        height:8px;width:{pct_terlaksana:.1f}%;"></div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("<hr style='border-color:#1e2a45;margin:8px 0 20px 0'>", unsafe_allow_html=True)
 
-    # ── Tabel Detail Evaluasi ─────────────────────────────────────────────────
-    step_badge(3, "Tabel Detail Evaluasi")
+    # ── Tabel Detail ──────────────────────────────────────────────────────────
+    step_badge(5, "Tabel Detail Rencana vs Realisasi")
 
-    # Filter per mesin
-    mesin_list = list({e["nama"] for e in evaluasi})
-    mesin_filter = st.selectbox(
-        "Filter Mesin",
-        options=["Semua Mesin"] + mesin_list,
-        key="filter_mesin_evaluasi",
-    )
-
-    # Filter status
     status_filter = st.selectbox(
-        "Filter Status",
-        options=["Semua Status", "✅ Tepat", "⚠️ Terlambat", "⚡ Lebih Cepat",
-                 "❌ Tidak Terlaksana", "⏳ Belum"],
-        key="filter_status_evaluasi",
+        "Filter Status", options=["Semua Status"] + STATUS_OPTIONS,
+        key="di_filter_status",
     )
-
-    # Apply filter
-    data_tampil = evaluasi
-    if mesin_filter != "Semua Mesin":
-        data_tampil = [e for e in data_tampil if e["nama"] == mesin_filter]
+    data_tampil = jadwal_list
     if status_filter != "Semua Status":
-        data_tampil = [e for e in data_tampil if e["status"] == status_filter]
+        data_tampil = [j for j in data_tampil
+                       if (j["status"] or "⏳ Belum") == status_filter]
 
-    # Render tabel
     header_css = ("color:#f59e0b;font-size:10px;font-family:IBM Plex Mono,monospace;"
-                  "letter-spacing:1px;padding:8px 10px;border-bottom:1px solid #1e2a45;"
-                  "text-align:center;")
+                  "letter-spacing:1px;padding:8px 10px;border-bottom:1px solid #1e2a45;text-align:center;")
     cell_css   = ("color:#f8fafc;font-size:12px;font-family:IBM Plex Mono,monospace;"
                   "padding:7px 10px;text-align:center;border-bottom:1px solid #0f1628;")
-    name_css   = ("color:#f8fafc;font-size:12px;font-family:IBM Plex Mono,monospace;"
-                  "padding:7px 10px;text-align:left;border-bottom:1px solid #0f1628;"
-                  "border-right:1px solid #1e2a45;")
 
     rows_html = ""
-    for e in data_tampil:
-        warna  = status_color(e["status"])
+    for j in data_tampil:
+        rencana_lbl = f"{BULAN_NAMA[j['bulan']-1]} Minggu {j['minggu']}"
+        aktual_lbl  = (f"{BULAN_NAMA[j['bulan_aktual']-1]} Minggu {j['minggu_aktual']}"
+                       if j["bulan_aktual"] and j["minggu_aktual"] else "-")
+        status = j["status"] or "⏳ Belum"
+        ket    = j["keterangan"] or "-"
+        warna  = status_color(status)
         rows_html += f"""
         <tr>
-          <td style="{name_css}">{e['nama']}</td>
-          <td style="{cell_css}">{e['rencana_label']}</td>
-          <td style="{cell_css}">{e['realisasi_label']}</td>
-          <td style="{cell_css};color:{warna};font-weight:700;">{e['status']}</td>
+          <td style="{cell_css};text-align:left;border-right:1px solid #1e2a45;">{rencana_lbl}</td>
+          <td style="{cell_css}">{aktual_lbl}</td>
+          <td style="{cell_css};color:{warna};font-weight:700;">{status}</td>
+          <td style="{cell_css};text-align:left;color:#94a3b8;">{ket}</td>
         </tr>
         """
 
     if not rows_html:
-        rows_html = f"""
-        <tr><td colspan="4" style="{cell_css};color:#475569;">
-            Tidak ada data yang sesuai filter.
-        </td></tr>
-        """
+        rows_html = f'<tr><td colspan="4" style="{cell_css};color:#475569;">Tidak ada data.</td></tr>'
 
     st.html(f"""
     <div style="overflow-x:auto;margin-top:12px;">
-      <table style="border-collapse:collapse;background:#0a0e1a;width:100%;
-                    font-family:IBM Plex Mono,monospace;">
+      <table style="border-collapse:collapse;background:#0a0e1a;width:100%;font-family:IBM Plex Mono,monospace;">
         <thead>
           <tr>
-            <th style="{header_css};text-align:left;border-right:1px solid #1e2a45;">Mesin</th>
-            <th style="{header_css};">Rencana</th>
+            <th style="{header_css};text-align:left;border-right:1px solid #1e2a45;">Rencana</th>
             <th style="{header_css};">Realisasi</th>
             <th style="{header_css};">Status</th>
+            <th style="{header_css};text-align:left;">Keterangan</th>
           </tr>
         </thead>
         <tbody>{rows_html}</tbody>
       </table>
     </div>
-    <p style="color:#475569;font-size:10px;font-family:IBM Plex Mono,monospace;
-              margin-top:8px;">Menampilkan {len(data_tampil)} dari {len(evaluasi)} jadwal</p>
+    <p style="color:#475569;font-size:10px;font-family:IBM Plex Mono,monospace;margin-top:8px;">
+      Menampilkan {len(data_tampil)} dari {len(jadwal_list)} jadwal
+    </p>
     """)
+
+    st.markdown("<hr style='border-color:#1e2a45;margin:20px 0'>", unsafe_allow_html=True)
+
+    # ── Step 6: Export Excel ──────────────────────────────────────────────────
+    step_badge(6, "Export Rekap ke Excel")
+
+    if st.button("📥 Export Excel", type="primary"):
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+
+            wb  = openpyxl.Workbook()
+            ws  = wb.active
+            ws.title = f"Rekap {mesin_pilih} {tahun_pilih}"
+
+            thin   = Side(style="thin", color="1e2a45")
+            border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+            # Judul
+            ws.merge_cells("A1:F1")
+            ws["A1"] = f"REKAP INSPEKSI — {mesin_pilih.upper()} — TAHUN {tahun_pilih}"
+            ws["A1"].font      = Font(name="Consolas", bold=True, size=13, color="f59e0b")
+            ws["A1"].fill      = PatternFill("solid", fgColor="0a0e1a")
+            ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+            ws.row_dimensions[1].height = 28
+
+            ws.merge_cells("A2:F2")
+            ws["A2"] = f"Versi: {versi_options[versi_idx]}"
+            ws["A2"].font      = Font(name="Consolas", size=10, color="64748b")
+            ws["A2"].fill      = PatternFill("solid", fgColor="0a0e1a")
+            ws["A2"].alignment = Alignment(horizontal="center")
+            ws.append([])
+
+            # Header
+            for col_idx, hdr in enumerate(["No","Rencana","Realisasi","Status","Keterangan","Diupdate"], 1):
+                cell = ws.cell(row=ws.max_row+1, column=col_idx, value=hdr)
+                cell.font      = Font(name="Consolas", bold=True, size=10, color="f59e0b")
+                cell.fill      = PatternFill("solid", fgColor="1e2a45")
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.border    = border
+            ws.row_dimensions[ws.max_row].height = 20
+
+            status_colors_map = {
+                "✅ Tepat": "22c55e", "⚠️ Terlambat": "f59e0b",
+                "⚡ Lebih Cepat": "38bdf8", "❌ Tidak Terlaksana": "ef4444", "⏳ Belum": "64748b"
+            }
+
+            for no, j in enumerate(jadwal_list, 1):
+                rencana_lbl = f"{BULAN_NAMA[j['bulan']-1]} Minggu {j['minggu']}"
+                aktual_lbl  = (f"{BULAN_NAMA[j['bulan_aktual']-1]} Minggu {j['minggu_aktual']}"
+                               if j["bulan_aktual"] and j["minggu_aktual"] else "-")
+                status  = j["status"] or "⏳ Belum"
+                s_color = status_colors_map.get(status, "64748b")
+                row_data = [no, rencana_lbl, aktual_lbl, status,
+                            j["keterangan"] or "-", j["updated_at"] or "-"]
+                ws.append(row_data)
+                dr = ws.max_row
+                ws.row_dimensions[dr].height = 18
+                for ci, _ in enumerate(row_data, 1):
+                    cell = ws.cell(row=dr, column=ci)
+                    cell.fill      = PatternFill("solid", fgColor="0f1628")
+                    cell.alignment = Alignment(
+                        horizontal="left" if ci in [2,3,5] else "center",
+                        vertical="center"
+                    )
+                    cell.border = border
+                    cell.font   = Font(
+                        name="Consolas", size=10,
+                        color=s_color if ci == 4 else ("94a3b8" if ci == 5 else "f8fafc"),
+                        bold=(ci == 4)
+                    )
+
+            # Ringkasan
+            ws.append([])
+            for label, nilai, warna in [
+                ("Total Jadwal", total, "f8fafc"),
+                ("Tepat", n_tepat, "22c55e"),
+                ("Terlambat", n_terlambat, "f59e0b"),
+                ("Lebih Cepat", n_cepat, "38bdf8"),
+                ("Tidak Terlaksana", n_tidak, "ef4444"),
+                ("Belum", n_belum, "64748b"),
+                ("Tingkat Realisasi", f"{pct_terlaksana:.1f}%", "22c55e"),
+            ]:
+                r = ws.max_row + 1
+                ws.cell(row=r, column=1, value=label).font = Font(name="Consolas", size=10, color="94a3b8")
+                ws.cell(row=r, column=2, value=str(nilai)).font = Font(name="Consolas", bold=True, size=10, color=warna)
+
+            for i, w in enumerate([6, 22, 22, 22, 40, 20], 1):
+                ws.column_dimensions[get_column_letter(i)].width = w
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            fname = f"rekap_inspeksi_{mesin_pilih.replace(' ','_')}_{tahun_pilih}.xlsx"
+            st.download_button(
+                label="⬇️ Download Excel", data=buf, file_name=fname,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except ImportError:
+            st.error("❌ Tambahkan 'openpyxl' ke requirements.txt")
+        except Exception as e:
+            st.error(f"❌ Gagal export: {e}")
