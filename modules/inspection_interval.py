@@ -111,7 +111,7 @@ def render_kalender_html(mesin_list, jadwal, tahun):
 # ── Main show() ───────────────────────────────────────────────────────────────
 
 def show():
-    page_header("🗓️", "Interval Inspeksi", "Frekuensi inspeksi optimal & kalender tahunan")
+    page_header("🗓️", "Rencana Inspeksi", "Frekuensi inspeksi optimal & kalender tahunan")
 
     tahun = datetime.datetime.now().year
 

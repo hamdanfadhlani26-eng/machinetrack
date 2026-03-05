@@ -24,7 +24,7 @@ MENU = {
     "📋  Data Kerusakan"          : "data_kerusakan",
     "🔍  Identifikasi Distribusi" : "identifikasi",
     "📐  Goodness of Fit"         : "gof",
-    "🗓️  Interval Inspeksi"       : "inspeksi",
+    "🗓️  Rencana Inspeksi"        : "inspeksi",
     "📝  Data Inspeksi"           : "data_inspeksi",
 }
 
