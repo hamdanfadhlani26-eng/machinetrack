@@ -35,7 +35,7 @@ def sudah_lewat(tahun: int, bulan: int, minggu: int) -> bool:
     if bulan == bln_sk and minggu < mgg_sk: return True
     return False
 
-def hitung_status_otomatis(tahun, bulan_r, minggu_r, bulan_a, minggu_a):
+def hitung_status_otomatis(bulan_r, minggu_r, bulan_a, minggu_a):
     if bulan_r == bulan_a and minggu_r == minggu_a:
         return "✅ Tepat"
     rencana_global = (bulan_r - 1) * 4 + minggu_r
@@ -101,17 +101,37 @@ def show():
 
     st.markdown(
         "<p style='color:#94a3b8;font-size:12px;font-family:IBM Plex Mono,monospace;"
-        "margin-bottom:16px;'>Isi realisasi untuk setiap jadwal inspeksi. "
-        "Keterangan <span style=\"color:#ef4444;\">wajib diisi</span> "
-        "jika status Terlambat, Lebih Cepat, atau Tidak Terlaksana.</p>",
+        "margin-bottom:4px;'>"
+        "Centang <span style='color:#ef4444;font-weight:700;'>✗ Tidak Terlaksana</span> "
+        "jika inspeksi tidak dilakukan. "
+        "Keterangan <span style='color:#ef4444;'>wajib diisi</span> "
+        "jika status bukan Tepat.</p>",
         unsafe_allow_html=True,
     )
 
-    # Hanya inisialisasi session state untuk keterangan (tidak conflict dengan widget)
+    # Header kolom
+    st.markdown("<br>", unsafe_allow_html=True)
+    h1, h2, h3, h4, h5, h6 = st.columns([2, 1.5, 2, 2, 1, 3])
+    for col, lbl in zip(
+        [h1, h2, h3, h4, h5, h6],
+        ["RENCANA", "TDK TERLAKSANA", "BULAN AKTUAL", "MINGGU AKTUAL", "STATUS", "KETERANGAN"]
+    ):
+        col.markdown(
+            f"<p style='color:#475569;font-size:10px;font-family:IBM Plex Mono,monospace;"
+            f"letter-spacing:1px;margin-bottom:2px;'>{lbl}</p>",
+            unsafe_allow_html=True,
+        )
+
+    # Inisialisasi keterangan dari DB (tidak conflict dengan widget lain)
     for jdw in jadwal_list:
         jid = jdw["jadwal_id"]
         if f"di_ket_{jid}" not in st.session_state:
             st.session_state[f"di_ket_{jid}"] = jdw["keterangan"] or ""
+        # Inisialisasi checkbox tidak terlaksana dari DB
+        if f"di_tdk_{jid}" not in st.session_state:
+            st.session_state[f"di_tdk_{jid}"] = (
+                jdw["status"] == "❌ Tidak Terlaksana" if jdw["status"] else False
+            )
 
     for jdw in jadwal_list:
         jid    = jdw["jadwal_id"]
@@ -119,11 +139,11 @@ def show():
         minggu = jdw["minggu"]
         label_rencana = f"{BULAN_NAMA[bulan-1]} Minggu {minggu}"
 
-        # Default dari data tersimpan atau dari rencana
+        # Default dari data tersimpan
         bln_default = (jdw["bulan_aktual"]  or bulan)  - 1
         mgg_default = (jdw["minggu_aktual"] or minggu) - 1
 
-        c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 1, 2, 2, 3])
+        c1, c2, c3, c4, c5, c6 = st.columns([2, 1.5, 2, 2, 1, 3])
 
         with c1:
             st.markdown(
@@ -133,77 +153,78 @@ def show():
             )
 
         with c2:
-            mode = st.selectbox(
-                "mode", options=["Pilih Minggu", "Pilih Tanggal"],
-                key=f"di_mode_{jid}", label_visibility="collapsed",
+            tidak_terlaksana = st.checkbox(
+                "Tidak Terlaksana",
+                key=f"di_tdk_{jid}",
+                label_visibility="collapsed",
             )
 
-        with c4:
-            if mode == "Pilih Tanggal":
-                hari_default = bln_default * 7 + 1
-                try:
-                    default_date = datetime.date(tahun_pilih, bulan, min(hari_default, 28))
-                except:
-                    default_date = datetime.date(tahun_pilih, bulan, 1)
-                tgl = st.date_input(
-                    "tgl", value=default_date,
-                    min_value=datetime.date(tahun_pilih, 1, 1),
-                    max_value=datetime.date(tahun_pilih, 12, 31),
-                    key=f"di_tgl_{jid}", label_visibility="collapsed",
+        if tidak_terlaksana:
+            # Sembunyikan input bulan & minggu, status otomatis ❌
+            with c3:
+                st.markdown(
+                    "<p style='color:#475569;font-family:IBM Plex Mono,monospace;"
+                    "font-size:11px;padding-top:8px;'>—</p>",
+                    unsafe_allow_html=True,
                 )
-                bln_ak = tgl.month
-                mgg_ak = get_minggu_dari_tanggal(tgl)
-            else:
+            with c4:
+                st.markdown(
+                    "<p style='color:#475569;font-family:IBM Plex Mono,monospace;"
+                    "font-size:11px;padding-top:8px;'>—</p>",
+                    unsafe_allow_html=True,
+                )
+            with c5:
+                st.markdown(
+                    "<p style='color:#ef4444;font-family:IBM Plex Mono,monospace;"
+                    "font-size:11px;padding-top:8px;font-weight:700;'>❌</p>",
+                    unsafe_allow_html=True,
+                )
+            with c6:
+                st.text_input(
+                    "ket", placeholder="Wajib diisi — alasan tidak terlaksana...",
+                    key=f"di_ket_{jid}", label_visibility="collapsed",
+                )
+
+        else:
+            # Tampilkan input bulan & minggu normal
+            with c3:
                 bln_ak = st.selectbox(
                     "bln", options=list(range(1, 13)),
                     format_func=lambda x: BULAN_NAMA[x-1],
                     index=bln_default,
-                    key=f"di_bln_{jid}", label_visibility="collapsed",
+                    key=f"di_bln_{jid}",
+                    label_visibility="collapsed",
                 )
 
-        with c5:
-            if mode == "Pilih Tanggal":
-                mgg_ak_display = get_minggu_dari_tanggal(
-                    datetime.date(tahun_pilih, bln_ak, 1)
-                )
-                st.markdown(
-                    f"<p style='color:#64748b;font-size:11px;font-family:IBM Plex Mono,monospace;"
-                    f"padding-top:8px;'>Minggu {mgg_ak}</p>",
-                    unsafe_allow_html=True,
-                )
-            else:
+            with c4:
                 mgg_ak = st.selectbox(
                     "mgg", options=[1, 2, 3, 4],
                     format_func=lambda x: f"Minggu {x}",
                     index=mgg_default,
-                    key=f"di_mgg_{jid}", label_visibility="collapsed",
+                    key=f"di_mgg_{jid}",
+                    label_visibility="collapsed",
                 )
 
-        # Hitung status preview
-        if mode == "Pilih Tanggal":
-            bln_cek = bln_ak
-            mgg_cek = mgg_ak
-        else:
-            bln_cek = st.session_state.get(f"di_bln_{jid}", bulan)
-            mgg_cek = st.session_state.get(f"di_mgg_{jid}", minggu)
+            # Hitung status preview
+            status_preview = hitung_status_otomatis(bulan, minggu, bln_ak, mgg_ak)
+            warna = status_color(status_preview)
 
-        status_preview = hitung_status_otomatis(tahun_pilih, bulan, minggu, bln_cek, mgg_cek)
-        warna = status_color(status_preview)
+            with c5:
+                icon = "✅" if "Tepat" in status_preview else (
+                       "⚠️" if "Terlambat" in status_preview else "⚡")
+                st.markdown(
+                    f"<p style='color:{warna};font-family:IBM Plex Mono,monospace;"
+                    f"font-size:11px;padding-top:8px;font-weight:700;'>{icon}</p>",
+                    unsafe_allow_html=True,
+                )
 
-        with c3:
-            st.markdown(
-                f"<p style='color:{warna};font-family:IBM Plex Mono,monospace;"
-                f"font-size:11px;padding-top:8px;font-weight:700;'>{status_preview}</p>",
-                unsafe_allow_html=True,
-            )
-
-        with c6:
-            ket_wajib   = status_preview in STATUS_WAJIB_KETERANGAN
-            placeholder = "Wajib diisi..." if ket_wajib else "Opsional..."
-            st.text_input(
-                "ket", placeholder=placeholder,
-                key=f"di_ket_{jid}", label_visibility="collapsed",
-            )
+            with c6:
+                ket_wajib   = status_preview in STATUS_WAJIB_KETERANGAN
+                placeholder = "Wajib diisi..." if ket_wajib else "Opsional..."
+                st.text_input(
+                    "ket", placeholder=placeholder,
+                    key=f"di_ket_{jid}", label_visibility="collapsed",
+                )
 
     st.markdown("<hr style='border-color:#1e2a45;margin:24px 0'>", unsafe_allow_html=True)
 
@@ -211,38 +232,44 @@ def show():
     step_badge(3, "Simpan Realisasi")
 
     if st.button("💾 Simpan Realisasi", type="primary"):
-        error_list = []
+        error_list     = []
         realisasi_list = []
 
         for jdw in jadwal_list:
-            jid    = jdw["jadwal_id"]
-            mode   = st.session_state.get(f"di_mode_{jid}", "Pilih Minggu")
-            ket    = st.session_state.get(f"di_ket_{jid}", "").strip()
+            jid              = jdw["jadwal_id"]
+            tidak_terlaksana = st.session_state.get(f"di_tdk_{jid}", False)
+            ket              = st.session_state.get(f"di_ket_{jid}", "").strip()
 
-            if mode == "Pilih Tanggal":
-                tgl    = st.session_state.get(f"di_tgl_{jid}")
-                bln_ak = tgl.month if tgl else jdw["bulan"]
-                mgg_ak = get_minggu_dari_tanggal(tgl) if tgl else jdw["minggu"]
+            if tidak_terlaksana:
+                status = "❌ Tidak Terlaksana"
+                bln_ak = None
+                mgg_ak = None
+                if not ket:
+                    error_list.append(
+                        f"{BULAN_NAMA[jdw['bulan']-1]} Minggu {jdw['minggu']} "
+                        f"(❌ Tidak Terlaksana) — keterangan wajib diisi"
+                    )
+                    continue
             else:
                 bln_ak = st.session_state.get(f"di_bln_{jid}", jdw["bulan"])
                 mgg_ak = st.session_state.get(f"di_mgg_{jid}", jdw["minggu"])
+                status = hitung_status_otomatis(jdw["bulan"], jdw["minggu"], bln_ak, mgg_ak)
+                if status in STATUS_WAJIB_KETERANGAN and not ket:
+                    error_list.append(
+                        f"{BULAN_NAMA[jdw['bulan']-1]} Minggu {jdw['minggu']} "
+                        f"({status}) — keterangan wajib diisi"
+                    )
+                    continue
 
-            status = hitung_status_otomatis(tahun_pilih, jdw["bulan"], jdw["minggu"], bln_ak, mgg_ak)
-
-            if status in STATUS_WAJIB_KETERANGAN and not ket:
-                error_list.append(
-                    f"{BULAN_NAMA[jdw['bulan']-1]} Minggu {jdw['minggu']} ({status})"
-                )
-            else:
-                realisasi_list.append({
-                    "jadwal_id"    : jid,
-                    "mesin"        : mesin_pilih,
-                    "tahun"        : tahun_pilih,
-                    "bulan_aktual" : bln_ak,
-                    "minggu_aktual": mgg_ak,
-                    "status"       : status,
-                    "keterangan"   : ket,
-                })
+            realisasi_list.append({
+                "jadwal_id"    : jid,
+                "mesin"        : mesin_pilih,
+                "tahun"        : tahun_pilih,
+                "bulan_aktual" : bln_ak,
+                "minggu_aktual": mgg_ak,
+                "status"       : status,
+                "keterangan"   : ket,
+            })
 
         if error_list:
             st.error("⚠️ Keterangan wajib diisi untuk:\n" + "\n".join(f"• {e}" for e in error_list))
@@ -317,7 +344,8 @@ def show():
                        if (j["status"] or "⏳ Belum") == status_filter]
 
     header_css = ("color:#f59e0b;font-size:10px;font-family:IBM Plex Mono,monospace;"
-                  "letter-spacing:1px;padding:8px 10px;border-bottom:1px solid #1e2a45;text-align:center;")
+                  "letter-spacing:1px;padding:8px 10px;border-bottom:1px solid #1e2a45;"
+                  "text-align:center;")
     cell_css   = ("color:#f8fafc;font-size:12px;font-family:IBM Plex Mono,monospace;"
                   "padding:7px 10px;text-align:center;border-bottom:1px solid #0f1628;")
 
@@ -396,7 +424,9 @@ def show():
 
             # Header tabel
             hdr_row = ws.max_row + 1
-            for ci, hdr in enumerate(["No","Rencana","Realisasi","Status","Keterangan","Diupdate"], 1):
+            for ci, hdr in enumerate(
+                ["No", "Rencana", "Realisasi", "Status", "Keterangan", "Diupdate"], 1
+            ):
                 cell = ws.cell(row=hdr_row, column=ci, value=hdr)
                 cell.font      = Font(name="Consolas", bold=True, size=10, color="f59e0b")
                 cell.fill      = PatternFill("solid", fgColor="1e2a45")
@@ -440,13 +470,13 @@ def show():
             # Ringkasan
             ws.append([])
             for label, nilai, warna in [
-                ("Total Jadwal",      total,              "f8fafc"),
-                ("Tepat",             n_tepat,            "22c55e"),
-                ("Terlambat",         n_terlambat,        "f59e0b"),
-                ("Lebih Cepat",       n_cepat,            "38bdf8"),
-                ("Tidak Terlaksana",  n_tidak,            "ef4444"),
-                ("Belum",             n_belum,            "64748b"),
-                ("Tingkat Realisasi", f"{pct_terlaksana:.1f}%", "22c55e"),
+                ("Total Jadwal",      total,                  "f8fafc"),
+                ("Tepat",             n_tepat,                "22c55e"),
+                ("Terlambat",         n_terlambat,            "f59e0b"),
+                ("Lebih Cepat",       n_cepat,                "38bdf8"),
+                ("Tidak Terlaksana",  n_tidak,                "ef4444"),
+                ("Belum",             n_belum,                "64748b"),
+                ("Tingkat Realisasi", f"{pct_terlaksana:.1f}%","22c55e"),
             ]:
                 r = ws.max_row + 1
                 ws.cell(row=r, column=1, value=label).font = \
