@@ -98,28 +98,29 @@ def render_mttf_box(dist: str, params: dict, dtype: str, nilai: float, a: float 
     }
     rumus = rumus_map.get(dist, "—")
 
+    # POIN 3: sesuaikan warna dengan tema light mode (cream/amber)
     param_str = "  &nbsp;|&nbsp;  ".join(
-        [f"<span style='color:#64748b'>{k}</span> = <span style='color:#38bdf8'>{v}</span>"
+        [f"<span style='color:#78716c'>{k}</span> = <span style='color:#b45309'>{v}</span>"
          for k, v in params.items()]
     )
 
-    st.markdown(f"""
-<div style="background:#0f1628;border:1px solid #f59e0b44;border-radius:8px;
+    st.html(f"""
+<div style="background:#fef9f0;border:1px solid #b4530944;border-radius:8px;
             padding:20px 24px;margin-top:8px;">
-  <p style="color:#64748b;font-family:'IBM Plex Mono',monospace;font-size:11px;
+  <p style="color:#78716c;font-family:'IBM Plex Mono',monospace;font-size:11px;
             margin:0 0 4px 0;letter-spacing:2px;text-transform:uppercase;">
     {label} — Distribusi {dist}
   </p>
-  <p style="color:#f59e0b;font-family:'IBM Plex Mono',monospace;font-size:36px;
+  <p style="color:#b45309;font-family:'IBM Plex Mono',monospace;font-size:36px;
             font-weight:700;margin:0;">{nilai:.4f}</p>
-  <p style="color:#64748b;font-family:'IBM Plex Mono',monospace;font-size:11px;
+  <p style="color:#a8a29e;font-family:'IBM Plex Mono',monospace;font-size:11px;
             margin:6px 0 10px 0;">satuan waktu</p>
-  <p style="color:#475569;font-family:'IBM Plex Mono',monospace;font-size:11px;margin:0;">
-    Rumus: <span style="color:#94a3b8;">{rumus}</span>
+  <p style="color:#a8a29e;font-family:'IBM Plex Mono',monospace;font-size:11px;margin:0;">
+    Rumus: <span style="color:#57534e;">{rumus}</span>
     &nbsp;&nbsp;·&nbsp;&nbsp; {param_str}
   </p>
 </div>
-""", unsafe_allow_html=True)
+""")
 
 
 # ── Main show() ───────────────────────────────────────────────────────────────
@@ -230,8 +231,8 @@ def show():
 
         sym = "≤" if gof["accept"] else ">"
         st.markdown(f"""
-<div style="background:var(--bg-card,#131d35);border:1px solid #1e2d4a;border-radius:8px;
-padding:0.8rem 1.2rem;margin-top:0.5rem;font-family:'IBM Plex Mono',monospace;font-size:0.85rem;">
+<div style="background:#fef9f0;border:1px solid #b4530944;border-radius:8px;
+padding:0.8rem 1.2rem;margin-top:0.5rem;font-family:'IBM Plex Mono',monospace;font-size:0.85rem;color:#1c1917;">
 D hitung = <code>{gof['D_hitung']}</code> &nbsp;<b>{sym}</b>&nbsp; D kritis = <code>{gof['D_kritis']}</code>
 </div>""", unsafe_allow_html=True)
 
@@ -257,8 +258,8 @@ D hitung = <code>{gof['D_hitung']}</code> &nbsp;<b>{sym}</b>&nbsp; D kritis = <c
 
         in_out = "berada dalam rentang" if gof["accept"] else "di luar rentang"
         st.markdown(f"""
-<div style="background:var(--bg-card,#131d35);border:1px solid #1e2d4a;border-radius:8px;
-padding:0.8rem 1.2rem;margin-top:0.5rem;font-family:'IBM Plex Mono',monospace;font-size:0.85rem;">
+<div style="background:#fef9f0;border:1px solid #b4530944;border-radius:8px;
+padding:0.8rem 1.2rem;margin-top:0.5rem;font-family:'IBM Plex Mono',monospace;font-size:0.85rem;color:#1c1917;">
 B hitung = <code>{gof['B']}</code> &nbsp;·&nbsp;
 Rentang kritis = [<code>{gof['chi_low']}</code> , <code>{gof['chi_high']}</code>]
 &nbsp;·&nbsp; B <b>{in_out}</b>
@@ -288,8 +289,8 @@ Rentang kritis = [<code>{gof['chi_low']}</code> , <code>{gof['chi_high']}</code>
 
         sym = "< F kritis" if gof["accept"] else "≥ F kritis"
         st.markdown(f"""
-<div style="background:var(--bg-card,#131d35);border:1px solid #1e2d4a;border-radius:8px;
-padding:0.8rem 1.2rem;margin-top:0.5rem;font-family:'IBM Plex Mono',monospace;font-size:0.85rem;">
+<div style="background:#fef9f0;border:1px solid #b4530944;border-radius:8px;
+padding:0.8rem 1.2rem;margin-top:0.5rem;font-family:'IBM Plex Mono',monospace;font-size:0.85rem;color:#1c1917;">
 M hitung = <code>{gof['M']}</code> &nbsp;<b>{sym}</b>&nbsp; F(0.05; {gof['k1']}; {gof['k2']}) = <code>{gof['F_kritis']}</code>
 </div>""", unsafe_allow_html=True)
 

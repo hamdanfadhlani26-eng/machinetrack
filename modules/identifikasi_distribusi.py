@@ -6,8 +6,8 @@ from modules.reliability import compute_index_of_fit
 from modules.theme import page_header, step_badge
 
 def show():
-    page_header("🔍", "Identifikasi Distribusi",
-                "Index of Fit berbasis Median Rank Regression · Benard's Approximation")
+    # POIN 1: hapus subtitle "Index of Fit berbasis Median Rank Regression · Benard's Approximation"
+    page_header("🔍", "Identifikasi Distribusi", "")
 
     tab_mesin, tab_manual = st.tabs(["🏭  Dari Database (TTR)", "🧮  Input Manual (TTF/TTR)"])
 
@@ -149,7 +149,6 @@ def _tampilkan_hasil(result):
     st.markdown("---")
     step_badge("✓", "Hasil Index of Fit")
 
-    # Tabel: kolom R² dihapus, r ditampilkan 4 desimal
     rows_r = []
     for name, res in sorted(result["results"].items(), key=lambda x: -x[1]["R2"]):
         rows_r.append({
@@ -160,15 +159,17 @@ def _tampilkan_hasil(result):
     st.dataframe(pd.DataFrame(rows_r), use_container_width=False, hide_index=True)
 
     r_best = round(float(result["results"][best]["r"]), 4)
+
+    # POIN 2: ganti warna teks di kotak distribusi terpilih — coklat tembaga & hitam pekat agar kontras
     st.markdown(f"""
-    <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);
-    border-left:4px solid #f59e0b;border-radius:8px;padding:0.8rem 1.2rem;margin:0.8rem 0;">
+    <div style="background:#fef3c7;border:1px solid #b45309;
+    border-left:4px solid #b45309;border-radius:8px;padding:0.8rem 1.2rem;margin:0.8rem 0;">
         <span style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;
-        color:#f59e0b;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">
+        color:#92400e;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">
         Distribusi Terpilih</span>
         <p style="font-family:'IBM Plex Mono',monospace;font-size:1.2rem;
-        font-weight:700;color:#e8edf5;margin:4px 0 0 0;">
-        {best} <span style="font-size:0.85rem;color:#8899bb;font-weight:400;">
+        font-weight:700;color:#1c1917;margin:4px 0 0 0;">
+        {best} <span style="font-size:0.85rem;color:#57534e;font-weight:400;">
         r = {r_best}</span></p>
     </div>
     """, unsafe_allow_html=True)

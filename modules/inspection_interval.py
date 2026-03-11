@@ -42,49 +42,50 @@ def render_kalender_html(mesin_list, jadwal):
     header_bulan = ""
     for b in BULAN:
         header_bulan += (
-            f'<th colspan="4" style="text-align:center;padding:6px 2px;color:#f59e0b;'
-            f'font-size:11px;border-bottom:1px solid #1e2a45;border-right:1px solid #1e2a45;">{b}</th>'
+            f'<th colspan="4" style="text-align:center;padding:6px 2px;color:#b45309;'
+            f'font-size:11px;border-bottom:1px solid #d6cfc4;border-right:1px solid #d6cfc4;">{b}</th>'
         )
     header_minggu = ""
     for _ in BULAN:
         for w in range(1, 5):
             header_minggu += (
-                f'<th style="text-align:center;padding:4px 1px;color:#64748b;'
-                f'font-size:10px;border-bottom:1px solid #1e2a45;">{w}</th>'
+                f'<th style="text-align:center;padding:4px 1px;color:#78716c;'
+                f'font-size:10px;border-bottom:1px solid #d6cfc4;">{w}</th>'
             )
     rows = ""
     for m in mesin_list:
         nama  = m["nama"]
         slots = jadwal.get(nama, set())
+        # POIN 4 & 5: nama mesin pakai warna gelap agar kontras di light mode
         row   = (
-            f'<td style="padding:6px 10px;color:#f8fafc;font-size:11px;'
+            f'<td style="padding:6px 10px;color:#1c1917;font-size:11px;'
             f'font-family:IBM Plex Mono,monospace;white-space:nowrap;'
-            f'border-right:2px solid #1e2a45;position:sticky;left:0;'
-            f'background:#0a0e1a;z-index:1;">{nama}</td>'
+            f'border-right:2px solid #d6cfc4;position:sticky;left:0;'
+            f'background:#faf8f5;z-index:1;">{nama}</td>'
         )
         for bln in range(1, 13):
             for mg in range(1, 5):
                 if (bln, mg) in slots:
-                    cell = '<td style="text-align:center;padding:3px 1px;"><span style="color:#22c55e;font-weight:700;font-size:12px;">I</span></td>'
+                    cell = '<td style="text-align:center;padding:3px 1px;"><span style="color:#16a34a;font-weight:700;font-size:12px;">I</span></td>'
                 else:
-                    cell = '<td style="text-align:center;padding:3px 1px;color:#1e2a45;font-size:10px;">·</td>'
+                    cell = '<td style="text-align:center;padding:3px 1px;color:#d6cfc4;font-size:10px;">·</td>'
                 row += cell
-        rows += f'<tr style="border-bottom:1px solid #0f1628;">{row}</tr>'
+        rows += f'<tr style="border-bottom:1px solid #ede8e0;">{row}</tr>'
 
     return f"""
     <div style="overflow-x:auto;margin-top:8px;">
-      <table style="border-collapse:collapse;background:#0a0e1a;font-family:IBM Plex Mono,monospace;min-width:900px;width:100%;">
+      <table style="border-collapse:collapse;background:#faf8f5;font-family:IBM Plex Mono,monospace;min-width:900px;width:100%;">
         <thead>
           <tr>
-            <th style="padding:6px 10px;color:#94a3b8;font-size:11px;text-align:left;
-                       border-bottom:1px solid #1e2a45;border-right:2px solid #1e2a45;
-                       position:sticky;left:0;background:#0a0e1a;z-index:2;">
+            <th style="padding:6px 10px;color:#57534e;font-size:11px;text-align:left;
+                       border-bottom:1px solid #d6cfc4;border-right:2px solid #d6cfc4;
+                       position:sticky;left:0;background:#faf8f5;z-index:2;">
               Mesin / Minggu Ke-
             </th>
             {header_bulan}
           </tr>
           <tr>
-            <th style="border-right:2px solid #1e2a45;position:sticky;left:0;background:#0a0e1a;z-index:2;"></th>
+            <th style="border-right:2px solid #d6cfc4;position:sticky;left:0;background:#faf8f5;z-index:2;"></th>
             {header_minggu}
           </tr>
         </thead>
@@ -93,8 +94,8 @@ def render_kalender_html(mesin_list, jadwal):
         </tbody>
       </table>
     </div>
-    <p style="color:#475569;font-family:IBM Plex Mono,monospace;font-size:10px;margin-top:8px;">
-      <span style="color:#22c55e;font-weight:700;">I</span> = Jadwal Inspeksi
+    <p style="color:#78716c;font-family:IBM Plex Mono,monospace;font-size:10px;margin-top:8px;">
+      <span style="color:#16a34a;font-weight:700;">I</span> = Jadwal Inspeksi
     </p>
     """
 
@@ -148,7 +149,7 @@ def show():
         periode = st.number_input("Periode pengamatan (bulan)", value=DEFAULT_PERIODE,
                                    min_value=1, step=1)
 
-    st.markdown("<hr style='border-color:#1e2a45;margin:16px 0'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:#e7e0d6;margin:16px 0'>", unsafe_allow_html=True)
 
     # ── Step 2: Pilih & Edit Data Mesin ──────────────────────────────────────
     step_badge(2, "Pilih Mesin & Parameter")
@@ -167,11 +168,9 @@ def show():
         st.info("Pilih minimal satu mesin untuk melanjutkan.")
         return
 
-    # Inisialisasi session state rows hanya untuk mesin yang dipilih
     if "ins_mesin_rows" not in st.session_state:
         st.session_state.ins_mesin_rows = {}
 
-    # Pastikan semua mesin yang dipilih ada di session state
     for nm in mesin_dipilih:
         if nm not in st.session_state.ins_mesin_rows:
             st.session_state.ins_mesin_rows[nm] = {
@@ -184,16 +183,17 @@ def show():
 
     # Label kolom
     c1, c2, c3 = st.columns([3, 2, 2])
-    c1.markdown("<p style='color:#475569;font-size:10px;font-family:IBM Plex Mono,monospace;margin-bottom:4px;'>NAMA MESIN</p>", unsafe_allow_html=True)
-    c2.markdown("<p style='color:#475569;font-size:10px;font-family:IBM Plex Mono,monospace;margin-bottom:4px;'>JML KERUSAKAN</p>", unsafe_allow_html=True)
-    c3.markdown("<p style='color:#475569;font-size:10px;font-family:IBM Plex Mono,monospace;margin-bottom:4px;'>MTTR (jam)</p>", unsafe_allow_html=True)
+    c1.markdown("<p style='color:#78716c;font-size:10px;font-family:IBM Plex Mono,monospace;margin-bottom:4px;'>NAMA MESIN</p>", unsafe_allow_html=True)
+    c2.markdown("<p style='color:#78716c;font-size:10px;font-family:IBM Plex Mono,monospace;margin-bottom:4px;'>JML KERUSAKAN</p>", unsafe_allow_html=True)
+    c3.markdown("<p style='color:#78716c;font-size:10px;font-family:IBM Plex Mono,monospace;margin-bottom:4px;'>MTTR (jam)</p>", unsafe_allow_html=True)
 
     for idx, row in enumerate(rows):
         c1, c2, c3 = st.columns([3, 2, 2])
         with c1:
+            # POIN 4: nama mesin warna gelap agar terbaca di light mode
             st.markdown(
-                f"<p style='color:#f8fafc;font-family:IBM Plex Mono,monospace;"
-                f"font-size:13px;padding:8px 4px;'>{row['nama']}</p>",
+                f"<p style='color:#1c1917;font-family:IBM Plex Mono,monospace;"
+                f"font-size:13px;padding:8px 4px;font-weight:600;'>{row['nama']}</p>",
                 unsafe_allow_html=True,
             )
         with c2:
@@ -210,7 +210,7 @@ def show():
                 label_visibility="collapsed"
             )
 
-    st.markdown("<hr style='border-color:#1e2a45;margin:16px 0'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:#e7e0d6;margin:16px 0'>", unsafe_allow_html=True)
 
     # ── Step 3: Hitung ────────────────────────────────────────────────────────
     step_badge(3, "Hasil Perhitungan")
@@ -245,10 +245,10 @@ def show():
     hasil = st.session_state["ins_hasil"]
     tahun_hasil = st.session_state.get("ins_tahun", tahun)
 
-    # Tabel hasil
-    header_css = "color:#f59e0b;font-size:10px;font-family:IBM Plex Mono,monospace;letter-spacing:1px;padding:6px 8px;border-bottom:1px solid #1e2a45;text-align:center;"
-    cell_css   = "color:#f8fafc;font-size:12px;font-family:IBM Plex Mono,monospace;padding:6px 8px;text-align:center;border-bottom:1px solid #0f1628;"
-    name_css   = "color:#f8fafc;font-size:12px;font-family:IBM Plex Mono,monospace;padding:6px 8px;text-align:left;border-bottom:1px solid #0f1628;"
+    # POIN 5: Tabel hasil — sesuaikan dengan light mode
+    header_css = "color:#b45309;font-size:10px;font-family:IBM Plex Mono,monospace;letter-spacing:1px;padding:6px 8px;border-bottom:1px solid #d6cfc4;text-align:center;background:#fef3c7;"
+    cell_css   = "color:#1c1917;font-size:12px;font-family:IBM Plex Mono,monospace;padding:6px 8px;text-align:center;border-bottom:1px solid #ede8e0;"
+    name_css   = "color:#1c1917;font-size:12px;font-family:IBM Plex Mono,monospace;padding:6px 8px;text-align:left;border-bottom:1px solid #ede8e0;font-weight:600;"
 
     tabel_rows = ""
     for h in hasil:
@@ -259,14 +259,14 @@ def show():
           <td style="{cell_css}">{h['mu']:.4f}</td>
           <td style="{cell_css}">{h['i']:.4f}</td>
           <td style="{cell_css}">{h['n_raw']:.4f}</td>
-          <td style="{cell_css};color:#22c55e;font-weight:700;">{h['n']}</td>
-          <td style="{cell_css};color:#38bdf8;">{h['T']:.2f} jam</td>
+          <td style="{cell_css};color:#16a34a;font-weight:700;">{h['n']}</td>
+          <td style="{cell_css};color:#b45309;font-weight:600;">{h['T']:.2f} jam</td>
         </tr>
         """
 
-    st.markdown(f"""
+    st.html(f"""
     <div style="overflow-x:auto;margin-bottom:20px;">
-      <table style="border-collapse:collapse;background:#0a0e1a;width:100%;font-family:IBM Plex Mono,monospace;">
+      <table style="border-collapse:collapse;background:#faf8f5;width:100%;font-family:IBM Plex Mono,monospace;">
         <thead>
           <tr>
             <th style="{header_css};text-align:left;">Mesin</th>
@@ -274,44 +274,45 @@ def show():
             <th style="{header_css};">μ (bulan)</th>
             <th style="{header_css};">i (bulan)</th>
             <th style="{header_css};">n raw</th>
-            <th style="{header_css};color:#22c55e;">n (roundup)</th>
-            <th style="{header_css};color:#38bdf8;">T interval</th>
+            <th style="{header_css};color:#16a34a;">n (roundup)</th>
+            <th style="{header_css};color:#b45309;">T interval</th>
           </tr>
         </thead>
         <tbody>{tabel_rows}</tbody>
       </table>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
+    # POIN 5: Detail perhitungan — warna font sesuai light mode
     for h in hasil:
         with st.expander(f"📐 Detail perhitungan — {h['nama']}"):
-            st.markdown(f"""
-            <div style="font-family:IBM Plex Mono,monospace;font-size:12px;line-height:2;">
-              <span style="color:#64748b;">k  = jumlah kerusakan / periode</span>
-                 = <span style="color:#f8fafc;">{h['k']:.4f} per bulan</span><br>
-              <span style="color:#64748b;">μ  = MTTR / jam kerja</span>
-                 = <span style="color:#f8fafc;">{h['mu']:.4f} bulan</span><br>
-              <span style="color:#64748b;">i  = {waktu_ins} / {jam_kerja}</span>
-                 = <span style="color:#f8fafc;">{h['i']:.4f} bulan</span><br>
-              <span style="color:#64748b;">n  = √((k × i) / μ)</span>
+            st.html(f"""
+            <div style="font-family:IBM Plex Mono,monospace;font-size:12px;line-height:2;background:#fef9f0;padding:16px;border-radius:8px;">
+              <span style="color:#78716c;">k  = jumlah kerusakan / periode</span>
+                 = <span style="color:#1c1917;font-weight:600;">{h['k']:.4f} per bulan</span><br>
+              <span style="color:#78716c;">μ  = MTTR / jam kerja</span>
+                 = <span style="color:#1c1917;font-weight:600;">{h['mu']:.4f} bulan</span><br>
+              <span style="color:#78716c;">i  = {waktu_ins} / {jam_kerja}</span>
+                 = <span style="color:#1c1917;font-weight:600;">{h['i']:.4f} bulan</span><br>
+              <span style="color:#78716c;">n  = √((k × i) / μ)</span>
                  = √(({h['k']:.4f} × {h['i']:.4f}) / {h['mu']:.4f})
-                 = <span style="color:#f59e0b;">{h['n_raw']:.4f}</span>
-                 → ROUNDUP = <span style="color:#22c55e;font-weight:700;">{h['n']}</span><br>
-              <span style="color:#64748b;">T  = {jam_kerja} / {h['n']}</span>
-                 = <span style="color:#38bdf8;">{h['T']:.2f} jam</span>
+                 = <span style="color:#b45309;font-weight:700;">{h['n_raw']:.4f}</span>
+                 → ROUNDUP = <span style="color:#16a34a;font-weight:700;">{h['n']}</span><br>
+              <span style="color:#78716c;">T  = {jam_kerja} / {h['n']}</span>
+                 = <span style="color:#b45309;font-weight:700;">{h['T']:.2f} jam</span>
             </div>
-            """, unsafe_allow_html=True)
+            """)
 
-    st.markdown("<hr style='border-color:#1e2a45;margin:20px 0'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:#e7e0d6;margin:20px 0'>", unsafe_allow_html=True)
 
     # ── Step 4: Kalender Preview ──────────────────────────────────────────────
     step_badge(4, f"Preview Kalender Inspeksi {tahun_hasil}")
 
     jadwal   = build_jadwal(hasil)
     kal_html = render_kalender_html(hasil, jadwal)
-    st.markdown(kal_html, unsafe_allow_html=True)
+    st.html(kal_html)
 
-    st.markdown("<hr style='border-color:#1e2a45;margin:20px 0'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:#e7e0d6;margin:20px 0'>", unsafe_allow_html=True)
 
     # ── Step 5: Simpan Rencana ────────────────────────────────────────────────
     step_badge(5, "Simpan Rencana Inspeksi")
@@ -325,9 +326,9 @@ def show():
             st.rerun()
     else:
         st.markdown(
-            f"<p style='color:#94a3b8;font-size:12px;font-family:IBM Plex Mono,monospace;'>"
+            f"<p style='color:#57534e;font-size:12px;font-family:IBM Plex Mono,monospace;'>"
             f"Klik tombol di bawah untuk menyimpan rencana inspeksi tahun "
-            f"<strong style='color:#f59e0b;'>{tahun_hasil}</strong> "
+            f"<strong style='color:#b45309;'>{tahun_hasil}</strong> "
             f"ke database. Rencana yang sudah tersimpan sebelumnya tidak akan dihapus.</p>",
             unsafe_allow_html=True,
         )
