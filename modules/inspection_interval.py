@@ -140,13 +140,13 @@ def show():
             index=0,
         )
     with col1:
-        jam_kerja = st.number_input("Jam kerja per bulan", value=DEFAULT_JAM_KERJA,
+        jam_kerja = st.number_input("Jam operasi mesin per bulan", value=DEFAULT_JAM_KERJA,
                                      min_value=1.0, format="%.2f")
     with col2:
-        waktu_ins = st.number_input("Waktu inspeksi (jam)", value=DEFAULT_WAKTU_INS,
+        waktu_ins = st.number_input("Durasi 1 kali inspeksi (jam)", value=DEFAULT_WAKTU_INS,
                                      min_value=0.1, format="%.2f")
     with col3:
-        periode = st.number_input("Periode pengamatan (bulan)", value=DEFAULT_PERIODE,
+        periode = st.number_input("Periode data historis (bulan)", value=DEFAULT_PERIODE,
                                    min_value=1, step=1)
 
     st.markdown("<hr style='border-color:#e7e0d6;margin:16px 0'>", unsafe_allow_html=True)
