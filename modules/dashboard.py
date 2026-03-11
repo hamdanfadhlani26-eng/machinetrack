@@ -5,14 +5,15 @@ import pandas as pd
 from modules import database
 from modules.theme import page_header, step_badge
 
+# ── Warna chart disesuaikan tema terang ───────────────────
 PLOT_LAYOUT = dict(
-    plot_bgcolor="#0f1629",
-    paper_bgcolor="#0f1629",
-    font=dict(family="IBM Plex Mono", color="#8899bb", size=11),
+    plot_bgcolor="#ffffff",
+    paper_bgcolor="#ffffff",
+    font=dict(family="Nunito, sans-serif", color="#44403c", size=12),
     margin=dict(l=0, r=0, t=20, b=0),
-    xaxis=dict(gridcolor="#1e2d4a", linecolor="#1e2d4a", tickfont=dict(size=10)),
-    yaxis=dict(gridcolor="#1e2d4a", linecolor="#1e2d4a", tickfont=dict(size=10)),
-    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
+    xaxis=dict(gridcolor="#e8e5e1", linecolor="#d6cfc6", tickfont=dict(size=11), tickcolor="#78716c"),
+    yaxis=dict(gridcolor="#e8e5e1", linecolor="#d6cfc6", tickfont=dict(size=11), tickcolor="#78716c"),
+    legend=dict(bgcolor="rgba(255,255,255,0.8)", font=dict(size=11), bordercolor="#d6cfc6", borderwidth=1),
 )
 
 def show():
@@ -52,9 +53,9 @@ def show():
 
     # ── KPI Cards ─────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Laporan",     len(df))
-    c2.metric("Corrective",        len(df[df["failure_type"] == "Corrective"]))
-    c3.metric("Preventive",        len(df[df["failure_type"] == "Preventive"]))
+    c1.metric("Total Laporan",      len(df))
+    c2.metric("Corrective",         len(df[df["failure_type"] == "Corrective"]))
+    c3.metric("Preventive",         len(df[df["failure_type"] == "Preventive"]))
     c4.metric("Total Repair Hours", f"{df['total_repair_hours'].sum():.1f} h")
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -67,7 +68,7 @@ def show():
         grp = df.groupby(["mesin", "failure_type"]).size().reset_index(name="count")
         fig = px.bar(
             grp, x="mesin", y="count", color="failure_type", barmode="group",
-            color_discrete_map={"Corrective": "#ef4444", "Preventive": "#10b981"},
+            color_discrete_map={"Corrective": "#b91c1c", "Preventive": "#15803d"},
             labels={"mesin": "Mesin", "count": "Jumlah", "failure_type": "Tipe"},
         )
         fig.update_layout(**PLOT_LAYOUT)
@@ -81,10 +82,10 @@ def show():
         fig2 = px.pie(
             pie, names="failure_type", values="count", hole=0.5,
             color="failure_type",
-            color_discrete_map={"Corrective": "#ef4444", "Preventive": "#10b981"},
+            color_discrete_map={"Corrective": "#b91c1c", "Preventive": "#15803d"},
         )
         fig2.update_layout(**{**PLOT_LAYOUT, "showlegend": True})
-        fig2.update_traces(textfont=dict(family="IBM Plex Mono", size=11))
+        fig2.update_traces(textfont=dict(family="Nunito, sans-serif", size=12))
         st.plotly_chart(fig2, use_container_width=True)
 
     # ── Chart row 2 ───────────────────────────────────────
@@ -95,10 +96,10 @@ def show():
     fig3.add_trace(go.Scatter(
         x=trend["month"], y=trend["total"],
         mode="lines+markers",
-        line=dict(color="#f59e0b", width=2),
-        marker=dict(color="#f59e0b", size=7, line=dict(color="#0f1629", width=2)),
+        line=dict(color="#b45309", width=2.5),
+        marker=dict(color="#b45309", size=8, line=dict(color="#ffffff", width=2)),
         fill="tozeroy",
-        fillcolor="rgba(245,158,11,0.06)",
+        fillcolor="rgba(180,83,9,0.08)",
     ))
     fig3.update_layout(**{**PLOT_LAYOUT, "margin": dict(l=0, r=0, t=10, b=0)})
     st.plotly_chart(fig3, use_container_width=True)
@@ -111,12 +112,12 @@ def show():
         orientation="h",
         marker=dict(
             color=hrs["total_repair_hours"],
-            colorscale=[[0, "#1d4ed8"], [1, "#f59e0b"]],
+            colorscale=[[0, "#fde68a"], [1, "#b45309"]],
             line=dict(width=0),
         ),
     ))
     fig4.update_layout(**{**PLOT_LAYOUT,
-        "xaxis": dict(gridcolor="#1e2d4a", title="Total Jam", tickfont=dict(size=10)),
-        "yaxis": dict(gridcolor="#1e2d4a", title="", tickfont=dict(size=10)),
+        "xaxis": dict(gridcolor="#e8e5e1", title="Total Jam", tickfont=dict(size=11)),
+        "yaxis": dict(gridcolor="#e8e5e1", title="", tickfont=dict(size=11)),
     })
     st.plotly_chart(fig4, use_container_width=True)
