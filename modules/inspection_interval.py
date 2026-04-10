@@ -9,7 +9,6 @@ DEFAULT_JAM_KERJA   = 134.72
 DEFAULT_WAKTU_INS   = 4.0
 DEFAULT_PERIODE     = 12
 
-MINGGU_MAP = {1: [1], 2: [1, 3], 3: [1, 2, 3], 4: [1, 2, 3, 4]}
 
 # ── Helpers kalkulasi ─────────────────────────────────────────────────────────
 
@@ -24,12 +23,54 @@ def hitung_parameter(jumlah_kerusakan, periode_bulan, mttr, waktu_inspeksi, jam_
             "jam_kerja_bulan": jam_kerja_bulan}
 
 
+def build_minggu_slots(n: int, minggu_awal: int) -> list[int]:
+    """
+    Bangun daftar minggu inspeksi dalam sebulan.
+    Inspeksi pertama di minggu_awal, berikutnya dengan jarak seragam.
+
+    Contoh:
+      n=1, minggu_awal=3 → [3]
+      n=2, minggu_awal=1 → [1, 3]  (jarak 2)
+      n=2, minggu_awal=2 → [2, 4]  (jarak 2)
+      n=3, minggu_awal=1 → [1, 2, 3]
+      n=4              → [1, 2, 3, 4]
+    """
+    n = min(n, 4)
+    if n == 1:
+        return [minggu_awal]
+    if n == 4:
+        return [1, 2, 3, 4]
+
+    # Jarak antar inspeksi = floor(4 / n)
+    jarak = 4 // n
+    slots = []
+    mg = minggu_awal
+    for _ in range(n):
+        slots.append(mg)
+        mg += jarak
+    # Pastikan semua dalam rentang 1–4, wrap jika perlu
+    slots = [((s - 1) % 4) + 1 for s in slots]
+    # Hilangkan duplikat sambil pertahankan urutan
+    seen = set()
+    unique = []
+    for s in slots:
+        if s not in seen:
+            seen.add(s)
+            unique.append(s)
+    # Jika kurang dari n (karena wrap), tambahkan dari yang tersedia
+    available = [w for w in [1, 2, 3, 4] if w not in seen]
+    while len(unique) < n and available:
+        unique.append(available.pop(0))
+    return sorted(unique)
+
+
 def build_jadwal(mesin_list):
     jadwal = {}
     for m in mesin_list:
-        n          = m["n"]
-        slots      = set()
-        minggu_ins = MINGGU_MAP.get(min(n, 4), [1])
+        n           = m["n"]
+        minggu_awal = m.get("minggu_awal", 1)
+        slots       = set()
+        minggu_ins  = build_minggu_slots(n, minggu_awal)
         for bln in range(1, 13):
             for mg in minggu_ins:
                 slots.add((bln, mg))
@@ -56,7 +97,6 @@ def render_kalender_html(mesin_list, jadwal):
     for m in mesin_list:
         nama  = m["nama"]
         slots = jadwal.get(nama, set())
-        # POIN 4 & 5: nama mesin pakai warna gelap agar kontras di light mode
         row   = (
             f'<td style="padding:6px 10px;color:#1c1917;font-size:11px;'
             f'font-family:IBM Plex Mono,monospace;white-space:nowrap;'
@@ -181,7 +221,6 @@ def show():
 
     rows = [st.session_state.ins_mesin_rows[nm] for nm in mesin_dipilih]
 
-    # Label kolom
     c1, c2, c3 = st.columns([3, 2, 2])
     c1.markdown("<p style='color:#78716c;font-size:10px;font-family:IBM Plex Mono,monospace;margin-bottom:4px;'>NAMA MESIN</p>", unsafe_allow_html=True)
     c2.markdown("<p style='color:#78716c;font-size:10px;font-family:IBM Plex Mono,monospace;margin-bottom:4px;'>JML KERUSAKAN</p>", unsafe_allow_html=True)
@@ -190,7 +229,6 @@ def show():
     for idx, row in enumerate(rows):
         c1, c2, c3 = st.columns([3, 2, 2])
         with c1:
-            # POIN 4: nama mesin warna gelap agar terbaca di light mode
             st.markdown(
                 f"<p style='color:#1c1917;font-family:IBM Plex Mono,monospace;"
                 f"font-size:13px;padding:8px 4px;font-weight:600;'>{row['nama']}</p>",
@@ -234,18 +272,17 @@ def show():
             p["waktu_ins"] = waktu_ins
             p["periode"]   = periode
             hasil.append(p)
-        st.session_state["ins_hasil"]      = hasil
-        st.session_state["ins_tahun"]      = tahun
-        st.session_state["ins_tersimpan"]  = False
+        st.session_state["ins_hasil"]     = hasil
+        st.session_state["ins_tahun"]     = tahun
+        st.session_state["ins_tersimpan"] = False
 
     if "ins_hasil" not in st.session_state:
         st.info("Tekan tombol **Hitung** untuk melihat hasil.")
         return
 
-    hasil = st.session_state["ins_hasil"]
+    hasil       = st.session_state["ins_hasil"]
     tahun_hasil = st.session_state.get("ins_tahun", tahun)
 
-    # POIN 5: Tabel hasil — sesuaikan dengan light mode
     header_css = "color:#b45309;font-size:10px;font-family:IBM Plex Mono,monospace;letter-spacing:1px;padding:6px 8px;border-bottom:1px solid #d6cfc4;text-align:center;background:#fef3c7;"
     cell_css   = "color:#1c1917;font-size:12px;font-family:IBM Plex Mono,monospace;padding:6px 8px;text-align:center;border-bottom:1px solid #ede8e0;"
     name_css   = "color:#1c1917;font-size:12px;font-family:IBM Plex Mono,monospace;padding:6px 8px;text-align:left;border-bottom:1px solid #ede8e0;font-weight:600;"
@@ -283,7 +320,6 @@ def show():
     </div>
     """)
 
-    # POIN 5: Detail perhitungan — warna font sesuai light mode
     for h in hasil:
         with st.expander(f"📐 Detail perhitungan — {h['nama']}"):
             st.html(f"""
@@ -305,8 +341,78 @@ def show():
 
     st.markdown("<hr style='border-color:#e7e0d6;margin:20px 0'>", unsafe_allow_html=True)
 
-    # ── Step 4: Kalender Preview ──────────────────────────────────────────────
-    step_badge(4, f"Preview Kalender Inspeksi {tahun_hasil}")
+    # ── Step 4: Pilih Minggu Awal per Mesin ──────────────────────────────────
+    step_badge(4, "Tentukan Minggu Mulai Inspeksi")
+
+    st.markdown(
+        "<p style='color:#57534e;font-size:12px;font-family:IBM Plex Mono,monospace;margin-bottom:12px;'>"
+        "Tentukan minggu pertama pelaksanaan inspeksi untuk setiap mesin. "
+        "Inspeksi berikutnya akan mengikuti pola yang konsisten berdasarkan minggu awal ini.</p>",
+        unsafe_allow_html=True,
+    )
+
+    if "ins_minggu_awal" not in st.session_state:
+        st.session_state["ins_minggu_awal"] = {}
+
+    for h in hasil:
+        nama = h["nama"]
+        n    = min(h["n"], 4)
+
+        # Tentukan pilihan minggu awal yang valid berdasarkan n
+        # Minggu awal harus memungkinkan n inspeksi dalam 4 minggu tanpa keluar batas
+        if n == 1:
+            pilihan_awal = [1, 2, 3, 4]
+        elif n == 2:
+            pilihan_awal = [1, 2]   # awal 1→[1,3], awal 2→[2,4]
+        elif n == 3:
+            pilihan_awal = [1, 2]   # awal 1→[1,2,3], awal 2→[2,3,4]
+        else:
+            pilihan_awal = [1]      # n=4 selalu semua minggu
+
+        default_idx = 0
+        if nama in st.session_state["ins_minggu_awal"]:
+            prev = st.session_state["ins_minggu_awal"][nama]
+            if prev in pilihan_awal:
+                default_idx = pilihan_awal.index(prev)
+
+        col_nama, col_pilih, col_preview = st.columns([3, 2, 4])
+
+        with col_nama:
+            st.markdown(
+                f"<p style='color:#1c1917;font-family:IBM Plex Mono,monospace;"
+                f"font-size:13px;padding:8px 4px;font-weight:600;'>{nama}</p>",
+                unsafe_allow_html=True,
+            )
+
+        with col_pilih:
+            mg_awal = st.selectbox(
+                "Minggu awal",
+                options=pilihan_awal,
+                index=default_idx,
+                format_func=lambda x: f"Minggu {x}",
+                key=f"ins_mw_{nama}",
+                label_visibility="collapsed",
+            )
+            st.session_state["ins_minggu_awal"][nama] = mg_awal
+
+        with col_preview:
+            slots_preview = build_minggu_slots(n, mg_awal)
+            slots_str = " · ".join([f"Minggu {s}" for s in slots_preview])
+            st.markdown(
+                f"<p style='color:#16a34a;font-family:IBM Plex Mono,monospace;"
+                f"font-size:11px;padding:8px 4px;'>"
+                f"→ Inspeksi tiap bulan pada: <strong>{slots_str}</strong></p>",
+                unsafe_allow_html=True,
+            )
+
+    # Tempelkan minggu_awal ke setiap hasil
+    for h in hasil:
+        h["minggu_awal"] = st.session_state["ins_minggu_awal"].get(h["nama"], 1)
+
+    st.markdown("<hr style='border-color:#e7e0d6;margin:20px 0'>", unsafe_allow_html=True)
+
+    # ── Step 5: Kalender Preview ──────────────────────────────────────────────
+    step_badge(5, f"Preview Kalender Inspeksi {tahun_hasil}")
 
     jadwal   = build_jadwal(hasil)
     kal_html = render_kalender_html(hasil, jadwal)
@@ -314,8 +420,8 @@ def show():
 
     st.markdown("<hr style='border-color:#e7e0d6;margin:20px 0'>", unsafe_allow_html=True)
 
-    # ── Step 5: Simpan Rencana ────────────────────────────────────────────────
-    step_badge(5, "Simpan Rencana Inspeksi")
+    # ── Step 6: Simpan Rencana ────────────────────────────────────────────────
+    step_badge(6, "Simpan Rencana Inspeksi")
 
     sudah_tersimpan = st.session_state.get("ins_tersimpan", False)
 
@@ -329,7 +435,7 @@ def show():
             f"<p style='color:#57534e;font-size:12px;font-family:IBM Plex Mono,monospace;'>"
             f"Klik tombol di bawah untuk menyimpan rencana inspeksi tahun "
             f"<strong style='color:#b45309;'>{tahun_hasil}</strong> "
-            f"ke database. Rencana yang sudah tersimpan sebelumnya tidak akan dihapus.</p>",
+            f"ke database.</p>",
             unsafe_allow_html=True,
         )
         if st.button("💾 Simpan Rencana Inspeksi", type="primary"):
@@ -337,19 +443,20 @@ def show():
                 for h in hasil:
                     nama       = h["nama"]
                     n          = min(h["n"], 4)
-                    minggu_ins = MINGGU_MAP.get(n, [1])
+                    mg_awal    = h.get("minggu_awal", 1)
+                    minggu_ins = build_minggu_slots(n, mg_awal)
                     slots      = []
                     for bln in range(1, 13):
                         for mg in minggu_ins:
                             slots.append((bln, mg))
                     database.simpan_rencana_inspeksi(
-                        mesin       = nama,
-                        tahun       = tahun_hasil,
-                        n           = h["n"],
-                        jam_kerja   = h["jam_kerja"],
-                        waktu_ins   = h["waktu_ins"],
-                        periode     = h["periode"],
-                        jadwal_slots= slots,
+                        mesin        = nama,
+                        tahun        = tahun_hasil,
+                        n            = h["n"],
+                        jam_kerja    = h["jam_kerja"],
+                        waktu_ins    = h["waktu_ins"],
+                        periode      = h["periode"],
+                        jadwal_slots = slots,
                     )
                 st.session_state["ins_tersimpan"] = True
                 st.rerun()
